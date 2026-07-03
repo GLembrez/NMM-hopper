@@ -9,7 +9,8 @@
 pyvenv.cfg
 .venv
 pip-selfcheck.json
-__pycache__/
+__pycache__/*.pyc
+__pycache__
 *.pyc
 
 
@@ -19,3 +20,5 @@ __pycache__/
 *.text
 *.casadi
 *.pkl
+
+tempCodeRunnerFile.py

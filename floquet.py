@@ -15,8 +15,8 @@ dt_f = cs.SX.sym("dt_f")
 
 var_s = cs.vertcat(xs_LO, dt_s)
 var_f = cs.vertcat(xf_TD, dt_f)
-xf_TD_est = dynamics.flight_integrate(xf_LO, [0.0, 0.0], dt_f, W)
-xs_LO_est = dynamics.stance_integrate(xs_TD, [0.0, 0.0], dt_s, K)
+xf_TD_est = dynamics.flight_integrate(xf_LO, 0.0, dt_f, W)
+xs_LO_est = dynamics.stance_integrate(xs_TD, 0.0, dt_s, K)
 residual_f = cs.vertcat(xf_TD_est - xf_TD, xf_TD_est[1] - cs.cos(xf_TD_est[2]))
 residual_s = cs.vertcat(xs_LO_est - xs_LO, xs_LO_est[0] ** 2 + xs_LO_est[1] ** 2 - 1)
 newton_s = var_s - cs.inv(cs.jacobian(residual_s, var_s)) @ residual_s

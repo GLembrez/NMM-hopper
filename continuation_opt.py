@@ -1,0 +1,65 @@
+import casadi as cs
+import hyperparameters as params
+import dynamics
+
+
+class ContinuationSolver:
+
+    def __init__(self, K, W, periodic=True):
+
+        self.K = K
+        self.W = W
+        self.opti = cs.Opti()
+        self.opti.solver(
+            "ipopt", {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-12}
+        )
+
+        self.energy = self.opti.parameter()
+
+        self.dt_s = self.opti.variable()
+        self.dt_f = self.opti.variable()
+        self.traj_s = self.opti.variable(4, params.N)
+        self.traj_f = self.opti.variable(6, params.N)
+
+        self.declare_constraints()
+
+        self.set_periodicity(periodic)
+
+    def declare_constraints(self):
+
+        for i in range(params.N - 1):
+            # dynamics constraint
+            self.opti.subject_to(
+                self.traj_s[:, i + 1]
+                == dynamics.RK4s(self.traj_s[:, i], 0.0, self.dt_s, self.K)
+            )
+            self.opti.subject_to(
+                self.traj_f[:, i + 1]
+                == dynamics.RK4f(self.traj_f[:, i], 0.0, self.dt_f, self.W)
+            )
+
+        # touch-down constraint
+        self.opti.subject_to(
+            self.traj_f[2, -1] == cs.atan(-self.traj_s[0, 0] / self.traj_s[1, 0])
+        )
+        self.opti.subject_to(self.traj_f[1, -1] == self.traj_s[1, 0])
+        self.opti.subject_to(self.traj_f[3:5, -1] == self.traj_s[2:, 0])
+
+        # lift-off constraint
+        self.opti.subject_to(self.traj_s[0, -1] ** 2 + self.traj_s[1, -1] ** 2 == 1)
+        self.opti.subject_to(self.traj_f[0, 0] ** 2 + self.traj_f[1, 0] ** 2 == 1)
+
+        # energy constraint
+        self.opti.subject_to(
+            0.5 * (self.traj_f[3, 0] ** 2 + self.traj_f[4, 0] ** 2) + self.traj_f[0, 1]
+            == self.energy
+        )
+
+    def set_periodicity(self, periodic):
+        if periodic:
+            self.opti.subject_to(
+                self.traj_f[1:, 0] == dynamics.stance_to_flight(self.traj_s[:, -1])[1:]
+            )
+        else:
+            pass
+
