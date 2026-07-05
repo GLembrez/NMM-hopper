@@ -11,11 +11,21 @@ def _():
     import casadi as cs
     from matplotlib import pyplot as plt
 
-    return
+    import floquet 
+    import dynamics
+    import hyperparameters as params
+    from continuation_opt import ContinuationSolver
+
+    return ContinuationSolver, cs
 
 
 @app.cell
-def _():
+def _(ContinuationSolver, cs):
+    K = 40
+    W = cs.sqrt(10)
+
+    solver = ContinuationSolver(K,W)
+
     return
 
 

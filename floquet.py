@@ -2,42 +2,37 @@ import casadi as cs
 import hyperparameters as params
 import dynamics
 
+
+flight_integrate = dynamics.RK4f.fold(params.N//2)
+stance_integrate = dynamics.RK4s.fold(params.N)
+
 K = cs.SX.sym("K")
 W = cs.SX.sym("W")
 
-xs_LO = cs.SX.sym("xs_LO", 4)
-xs_TD = cs.SX.sym("xs_TD", 4)
-xf_LO = cs.SX.sym("xf_LO", 6)
-xf_TD = cs.SX.sym("xf_TD", 6)
-dt_s = cs.SX.sym("dt_s")
-dt_f = cs.SX.sym("dt_f")
-
-var_s = cs.vertcat(xs_LO, dt_s)
-var_f = cs.vertcat(xf_TD, dt_f)
-xf_TD_est = dynamics.flight_integrate(xf_LO, 0.0, dt_f, W)
-xs_LO_est = dynamics.stance_integrate(xs_TD, 0.0, dt_s, K)
-residual_f = cs.vertcat(xf_TD_est - xf_TD, xf_TD_est[1] - cs.cos(xf_TD_est[2]))
-residual_s = cs.vertcat(xs_LO_est - xs_LO, xs_LO_est[0] ** 2 + xs_LO_est[1] ** 2 - 1)
-newton_s = var_s - cs.inv(cs.jacobian(residual_s, var_s)) @ residual_s
-newton_f = var_f - cs.inv(cs.jacobian(residual_f, var_f)) @ residual_f
-
-eval_newton_s = cs.Function(
-    "eval_newton_s", [xs_TD, var_s, K], [newton_s, cs.jacobian(newton_s[:4], xs_TD)]
+var = cs.SX.sym("var", 19)
+x_init = cs.SX.sym("x_init", 6)
+residual = cs.vertcat(
+    var[:6] - dynamics.flight_integrate(x_init, var[16], 0, W),
+    var[6:10] - dynamics.stance_integrate(dynamics.flight_to_stance(var[:6]), var[17], 0, K),
+    var[10:16] - dynamics.flight_integrate(dynamics.stance_to_flight(var[6:10]), var[18], 0, W),
+    cs.cos(var[2]) - var[1],
+    var[6] ** 2 + var[7] ** 2,
+    var[14],
 )
-eval_newton_f = cs.Function(
-    "eval_newton_f", [xf_LO, var_f, W], [newton_f, cs.jacobian(newton_f[:6], xf_LO)]
-)
+newton = var - cs.jacobian(residual, var) @ var
+newton_jac = cs.jacobian(newton, x_init)
+
+monodromy = cs.Function('monodromy',[x_init,var,K,W],[newton_jac[[11,12,13,15],[1,2,3,5]]])
 
 
 def compute_floquet(branch, idx, K, W):
-    var_s = cs.vertcat(branch["traj"][idx][[0, 1, 3, 4], -1], branch["dt"][idx][1])
-    var_f = cs.vertcat(branch["traj"][idx][:, params.N - 1], branch["dt"][idx][0])
-    for _ in range(10):
-        var_s, J_s = eval_newton_s(
-            branch["traj"][idx][[0, 1, 3, 4], params.N], var_s, K
-        )
-        var_f, J_f = eval_newton_f(branch["traj"][idx][:, 0], var_f, W)
-    J_f2s = dynamics.Jf2s(branch["traj"][idx][:, params.N - 1])
-    J_s2f = dynamics.Js2f(branch["traj"][idx][[0, 1, 3, 4], 2 * params.N - 1])
-    monodromy_matrix = J_s2f @ J_s @ J_f2s @ J_f
-    return monodromy_matrix[1:, 1:]
+    x_init = branch["traj"][idx][:,params.N//2]
+    var = cs.vertcat(
+        branch["traj"][idx][:,params.N//2],
+        branch["traj"][idx][:,params.N+params.N//2],
+        branch["traj"][idx][:,2*params.N-1],
+        branch["dt_f"][idx]/2,
+        branch["dt_s"][idx],
+        branch["dt_f"][idx]/2
+    )
+    return monodromy(x_init,var,K,W)

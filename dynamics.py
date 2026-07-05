@@ -31,8 +31,6 @@ xf_ = xf + dt / 6 * (k1f + 2 * k2f + 2 * k3f + k4f)
 
 RK4s = cs.Function("RK4s", [xs, u, dt, K], [xs_])
 RK4f = cs.Function("RK4f", [xf, u, dt, W], [xf_])
-flight_integrate = RK4f.fold(params.N)
-stance_integrate = RK4s.fold(params.N)
 
 s2f = cs.vertcat(xs[:2], cs.atan(-xs[0] / xs[1]), xs[2:], xs[0] * xs[3] - xs[1] * xs[2])
 f2s = cs.vertcat(-cs.sin(xf[2]), cs.cos(xf[2]), xf[3:5])

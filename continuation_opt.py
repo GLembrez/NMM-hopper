@@ -63,3 +63,18 @@ class ContinuationSolver:
         else:
             pass
 
+    def initialize(self,dts,dtf,trajs,trajf,Ed):
+        self.opti.set_value(self.energy,Ed)
+        self.opti.set_initial(self.dt_f, dtf)
+        self.opti.set_initial(self.dt_s, dts)
+        self.opti.set_initial(self.traj_f, trajf)
+        self.opti.set_initial(self.traj_s, trajs)
+
+    def solve(self):
+        self.opti.solve()
+        return (
+            self.opti.value(self.traj_f),
+            self.opti.value(self.traj_s),
+            self.opti.value(self.dt_f),
+            self.opti.value(self.dt_s)
+        )
