@@ -18,8 +18,8 @@ class ContinuationSolver:
 
         self.dt_s = self.opti.variable()
         self.dt_f = self.opti.variable()
-        self.traj_s = self.opti.variable(4, params.N)
-        self.traj_f = self.opti.variable(6, params.N)
+        self.traj_s = self.opti.variable(4, params.N_S)
+        self.traj_f = self.opti.variable(6, params.N_F)
 
         self.declare_constraints()
 
@@ -27,12 +27,13 @@ class ContinuationSolver:
 
     def declare_constraints(self):
 
-        for i in range(params.N - 1):
-            # dynamics constraint
+        # dynamics constraints
+        for i in range(params.N_S - 1):
             self.opti.subject_to(
                 self.traj_s[:, i + 1]
                 == dynamics.RK4s(self.traj_s[:, i], 0.0, self.dt_s, self.K)
             )
+        for i in range(params.N_F - 1):
             self.opti.subject_to(
                 self.traj_f[:, i + 1]
                 == dynamics.RK4f(self.traj_f[:, i], 0.0, self.dt_f, self.W)
@@ -63,8 +64,8 @@ class ContinuationSolver:
         else:
             pass
 
-    def initialize(self,dts,dtf,trajs,trajf,Ed):
-        self.opti.set_value(self.energy,Ed)
+    def initialize(self, dts, dtf, trajs, trajf, Ed):
+        self.opti.set_value(self.energy, Ed)
         self.opti.set_initial(self.dt_f, dtf)
         self.opti.set_initial(self.dt_s, dts)
         self.opti.set_initial(self.traj_f, trajf)
@@ -76,5 +77,5 @@ class ContinuationSolver:
             self.opti.value(self.traj_f),
             self.opti.value(self.traj_s),
             self.opti.value(self.dt_f),
-            self.opti.value(self.dt_s)
+            self.opti.value(self.dt_s),
         )

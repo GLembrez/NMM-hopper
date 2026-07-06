@@ -1,24 +1,59 @@
 import casadi as cs
 import numpy as np
+from matplotlib import pyplot as plt
+from scipy.integrate import solve_ivp
 import hyperparameters as params
 import dynamics
 import floquet
 
+stance = lambda t, x, K: np.array(dynamics.fs(x, 0, K)).squeeze()
+flight = lambda t, x, W: np.array(dynamics.ff(x, 0, W)).squeeze()
+touch_down = lambda t, x, arg: x[1] - np.cos(x[2])
+lift_off = lambda t, x, arg: x[0] ** 2 + x[1] ** 2 - 1
+apex = lambda t, x, arg: x[4]
+touch_down.terminal = True
+touch_down.direction = -1
+lift_off.terminal = True
+lift_off.direction = 1
+apex.terminal = False
+apex.direction = -1
 
-def energy_apex(x):
-    # apex: dy = 0
-    # x = [y,theta,dx,dtheta]^T
-    return x[0] + 0.5*x[2]**2
+
+def solver(x0, fun, events, args):
+    return solve_ivp(
+        fun=fun,
+        t_span=(0.0, 10.0),
+        y0=x0,
+        max_step=1e-1,
+        method="RK45",
+        rtol=1e-12,
+        atol=1e-12,
+        events=events,
+        args=args,
+        vectorized=True,
+    )
 
 
-def compute_delta(x0, dir, DE):
-    if np.abs(dir[2]) <= 1e-6:
-        # hopping in place case
-        return DE / dir[0]
-    a = dir[2] ** 2 / 2
-    b = x0[2] * dir[2] + dir[0]
-    c = -DE
-    discr = b**2 - 4 * a * c
-    d1, d2 = (-b - cs.sqrt(discr)) / (2 * a), (-b + cs.sqrt(discr)) / (2 * a)
-    delta = d1 if np.abs(d1) < np.abs(d2) else d2
-    return delta
+def init_trajectory(x0, K, W):
+    sol1 = solver(x0, flight, (touch_down, apex), (W,))
+    y1 = sol1.y_events[0][0]
+    y_a = sol1.y_events[1][0]
+    print(sol1.t_events)
+    x02 = np.array([-np.sin(y1[2]), np.cos(y1[2]), y1[3], y1[4]])
+    sol2 = solver(x02, stance, (lift_off,), (K,))
+    T1 = np.linspace(0, sol1.t_events[0][0], params.N_F)
+    T2 = np.linspace(0, sol2.t_events[0], params.N_S)
+    x1h, x2h = np.zeros((6, params.N_F)), np.zeros((4, params.N_S))
+    i1, i2 = 0, 0
+    for i in range(params.N_F):
+        while T1[i] > sol1.t[i1 + 1]:
+            i1 += 1
+        alpha1 = (T1[i] - sol1.t[i1]) / (sol1.t[i1 + 1] - sol1.t[i1])
+        x1h[:, i] = (1 - alpha1) * sol1.y[:, i1] + alpha1 * sol1.y[:, i1 + 1]
+    for i in range(params.N_S):
+        while T2[i] > sol2.t[i2 + 1]:
+            i2 += 1
+        alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
+        x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
+    return x1h, x2h, sol1.t_events[0][0], sol2.t_events[0], y_a, sol1.t_events[1][0]
+
