@@ -52,7 +52,7 @@ class ContinuationSolver:
 
         # energy constraint
         self.opti.subject_to(
-            0.5 * (self.traj_f[3, 0] ** 2 + self.traj_f[4, 0] ** 2) + self.traj_f[0, 1]
+            0.5 * (self.traj_f[3, 0] ** 2 + self.traj_f[4, 0] ** 2) + self.traj_f[1,0]
             == self.energy
         )
 

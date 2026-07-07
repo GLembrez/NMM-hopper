@@ -38,7 +38,6 @@ def init_trajectory(x0, K, W):
     sol1 = solver(x0, flight, (touch_down, apex), (W,))
     y1 = sol1.y_events[0][0]
     y_a = sol1.y_events[1][0]
-    print(sol1.t_events)
     x02 = np.array([-np.sin(y1[2]), np.cos(y1[2]), y1[3], y1[4]])
     sol2 = solver(x02, stance, (lift_off,), (K,))
     T1 = np.linspace(0, sol1.t_events[0][0], params.N_F)
@@ -57,3 +56,5 @@ def init_trajectory(x0, K, W):
         x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
     return x1h, x2h, sol1.t_events[0][0], sol2.t_events[0], y_a, sol1.t_events[1][0]
 
+def energy(x):
+    return 0.5*(x[3]**2 + x[4]**2) + x[1]
