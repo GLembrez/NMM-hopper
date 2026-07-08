@@ -3,8 +3,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 import hyperparameters as params
+import simple_shooting as ss
 import dynamics
-import floquet
 
 stance = lambda t, x, K: np.array(dynamics.fs(x, 0, K)).squeeze()
 flight = lambda t, x, W: np.array(dynamics.ff(x, 0, W)).squeeze()
@@ -37,7 +37,6 @@ def solver(x0, fun, events, args):
 def init_trajectory(x0, K, W):
     sol1 = solver(x0, flight, (touch_down, apex), (W,))
     y1 = sol1.y_events[0][0]
-    y_a = sol1.y_events[1][0]
     x02 = np.array([-np.sin(y1[2]), np.cos(y1[2]), y1[3], y1[4]])
     sol2 = solver(x02, stance, (lift_off,), (K,))
     T1 = np.linspace(0, sol1.t_events[0][0], params.N_F)
@@ -54,7 +53,19 @@ def init_trajectory(x0, K, W):
             i2 += 1
         alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
         x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
-    return x1h, x2h, sol1.t_events[0][0], sol2.t_events[0], y_a, sol1.t_events[1][0]
+    return x1h, x2h, sol1.t_events[0][0]/params.N_F, sol2.t_events[0]/params.N_S
 
-def energy(x):
-    return 0.5*(x[3]**2 + x[4]**2) + x[1]
+def energy_flight(x):
+    return 0.5 * (x[3] ** 2 + x[4] ** 2) + x[1]
+
+def energy_apex(x):
+    return 0.5 * (x[2] ** 2) + x[0]
+
+def initialize_next(traj_compact, apex, dir_old, dist, K, W):
+    dir1, dir2, isBifurcation = ss.compute_multipliers(traj_compact, apex, dir_old, K, W)
+    if energy_apex(apex[[1, 2, 3, 5]] + dist * dir1) < energy_apex(apex[[1,2,3,5]]):
+        dist = -dist
+    x0 = apex.copy()
+    x0[[1, 2, 3, 5]] += dist * dir1
+    var = ss.full_newton(traj_compact, x0, K, W)
+    return ss.trajectory(var, K, W)

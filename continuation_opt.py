@@ -48,11 +48,10 @@ class ContinuationSolver:
 
         # lift-off constraint
         self.opti.subject_to(self.traj_s[0, -1] ** 2 + self.traj_s[1, -1] ** 2 == 1)
-        self.opti.subject_to(self.traj_f[0, 0] ** 2 + self.traj_f[1, 0] ** 2 == 1)
 
         # energy constraint
         self.opti.subject_to(
-            0.5 * (self.traj_f[3, 0] ** 2 + self.traj_f[4, 0] ** 2) + self.traj_f[1,0]
+            0.5 * (self.traj_f[3, 0] ** 2 + self.traj_f[4, 0] ** 2) + self.traj_f[1, 0]
             == self.energy
         )
 
@@ -64,7 +63,7 @@ class ContinuationSolver:
         else:
             pass
 
-    def initialize(self, dts, dtf, trajs, trajf, Ed):
+    def initialize(self, trajf, trajs, dtf, dts, Ed):
         self.opti.set_value(self.energy, Ed)
         self.opti.set_initial(self.dt_f, dtf)
         self.opti.set_initial(self.dt_s, dts)

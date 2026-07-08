@@ -11,15 +11,17 @@ def _():
     import casadi as cs
     from scipy.linalg import eig
     from matplotlib import pyplot as plt
+    from time import time
+    import sys
 
-    import floquet 
+    import simple_shooting as ss
     import dynamics
     import hyperparameters as params
     import continuation_functions as utils
     from continuation_opt import ContinuationSolver
 
 
-    return ContinuationSolver, cs, eig, floquet, np, params, plt, utils
+    return ContinuationSolver, cs, dynamics, np, params, plt, time, utils
 
 
 @app.cell
@@ -38,68 +40,77 @@ def _(ContinuationSolver, cs):
 
 
 @app.cell
-def _(K, W, np, params, plt, solver, utils):
+def _(K, W, np, utils):
     x0 = np.array([0.,1.,0.,0.,0.1,0.])
-    xfh,xsh,tf,ts,y_a,t_a = utils.init_trajectory(x0,K,W)
-    solver.initialize(ts/params.N_S,tf/params.N_F,xsh,xfh,utils.energy(x0)+0.01)
-    xfh,xsh,dtf,dts = solver.solve()
-    plt.plot(np.linspace(0,params.N_F*dtf,params.N_F),xfh[1,:])
-    plt.plot(np.linspace(params.N_F*dtf,params.N_F*dtf + params.N_S*dts,params.N_S),xsh[1,:])
-    return dtf, dts, xfh, xsh
+    trajf_initial,trajs_initial,dtf_initial,dts_initial = utils.init_trajectory(x0,K,W)
+    return dtf_initial, dts_initial, trajf_initial, trajs_initial
 
 
 @app.cell
-def _(K, W, cs, dtf, dts, eig, floquet, params, xfh, xsh):
-    var_eval = cs.vertcat(
-        xfh[:,0], xsh[:,0], xfh[:,params.N_F//2], dtf,dts,dtf
-    )
-    x_0 = xfh[:,params.N_F//2]
-    var_eval = floquet.full_newton(var_eval,x_0,K,W)
-    J = floquet.var_newton(var_eval,x_0,K,W)
-    R = floquet.residual_newton(var_eval,x_0,K,W)
+def _(dynamics, utils):
+    def record(branch,trajf,trajs,dtf,dts):
+        branch["traj_f"].append(trajf)
+        branch["traj_s"].append(dynamics.stance_to_flight(trajs))
+        branch["dt_f"].append(dtf)
+        branch["dt_s"].append(dts)
+        branch["E"].append(utils.energy_flight(trajf[:,0]))
 
-    print(eig(J))
+    return (record,)
+
+
+@app.cell
+def _(
+    K,
+    W,
+    cs,
+    dtf_initial,
+    dts_initial,
+    np,
+    params,
+    plt,
+    record,
+    solver,
+    time,
+    trajf_initial,
+    trajs_initial,
+    utils,
+):
+    branch = {"E": [], "dir": [], "traj_f": [], "traj_s": [], "dt_f": [], "dt_s": []}
+
+
+    _E = utils.energy_flight(trajf_initial[:, 0])
+    solver.initialize(trajf_initial, trajs_initial, dtf_initial, dts_initial, _E)
+    _xfh, _xsh, _dtf, _dts = solver.solve()
+    N = 100
+    time_eval=0
+    for i in range(N):
+        apex = _xfh[:, params.N_F // 2]
+        var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], apex, _dtf, _dts, _dtf)
+        _xfh, _xsh, _dtf, _dts = utils.initialize_next(var, apex, np.array([1,0,0,0]),0.025, K, W)
+        _E = utils.energy_flight(_xfh[:, 0])
+        start = time()
+        solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
+        _xfh, _xsh, _dtf, _dts = solver.solve()
+        end = time()
+        time_eval += (end-start)/N
+        record(branch,_xfh, _xsh, _dtf, _dts)
+    print(time_eval)
+    plt.plot(branch["E"])
+    return N, branch
+
+
+@app.cell
+def _(N, branch, plt):
+    for idx in range(N):
+        plt.plot(branch["traj_f"][idx][1,:].T,branch["traj_f"][idx][4,:].T)
+        plt.plot(branch["traj_s"][idx][1,:].T,branch["traj_s"][idx][4,:].T)
+    plt.show()
 
     return
 
 
 @app.cell
 def _():
-    # flight_integrate = dynamics.RK4f.fold(params.N_F // 2)
-    # stance_integrate = dynamics.R.1K4s.fold(params.N_S)
-
-    # var = cs.SX.sym("var", 19)
-    # x_init = cs.SX.sym("x_init", 6)
-
-
-    # residual = cs.vertcat(
-    #     var[:6] - flight_integrate(x_init,0.0, var[16], W),
-    #     var[6:10] - stance_integrate(dynamics.flight_to_stance(var[:6]),0.0, var[17], K),
-    #     var[10:16] - flight_integrate(dynamics.stance_to_flight(var[6:10]),0.0, var[18], W),
-    #     cs.cos(var[2]) - var[1],
-    #     var[6] ** 2 + var[7] ** 2 - 1,
-    #     var[14],
-    # )
-    # newton = var - cs.inv(cs.jacobian(residual, var)) @ var
-
-    # simple_shooting = cs.Function("simple_shooting", [var, x_init], [newton, residual])
-
-    # initial_height = 1.1
-    # var_eval = np.zeros((19,))
-    # var_eval[1] = 1.0
-    # var_eval[4] =  - np.sqrt(2*(initial_height - 1))
-    # var_eval[7] = 1.0
-    # var_eval[9] = np.sqrt(2*(initial_height - 1))
-    # var_eval[11] = initial_height
-    # var_eval[16] = 2*np.sqrt(2*(initial_height - 1)) / params.N_F
-    # var_eval[17] = 0.1
-    # var_eval[18] = 2*np.sqrt(2*(initial_height - 1)) / params.N_F
-
-
-    # x0 = np.array([0.0, initial_height, 0.0, 0.0, 0.0, 0.0])
-    # (var_eval, 
-    # stance_integrate(dynamics.flight_to_stance(var_eval[:6]),0.0, var_eval[17], K), 
-    # simple_shooting(var_eval, x0))
     return
 
 
