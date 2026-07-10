@@ -29,7 +29,9 @@ newton_jac = cs.jacobian(newton, x_init)
 step_newton = cs.Function("step_newton", [var, x_init, K, W], [newton])
 residual_newton = cs.Function("residual_newton", [var, x_init, K, W], [residual])
 monodromy = cs.Function(
-    "monodromy", [var, x_init, K, W], [newton_jac[[11, 12, 13, 15], [1, 2, 3, 5]]]
+    "monodromy",
+    [var, x_init, K, W],
+    [newton_jac[[11, 12, 13, 15], [1, 2, 3, 5]], newton_jac[14, [1, 2, 3, 5]]],
 )
 full_newton = step_newton.fold(5)
 
@@ -43,15 +45,21 @@ trajectory = cs.Function("trajectory", [var, K, W], [traj_f, traj_s, var[18], va
 
 def compute_multipliers(traj_compact, apex, dir_old, K, W):
     var = full_newton(traj_compact, apex, K, W)
-    M = monodromy(var, apex, K, W)
-    mul, dir = eig(M)
-    idx_sorted = np.argsort(np.abs(mul - 1))
+    M, grad_P = monodromy(var, apex, K, W)
+    f = dynamics.ff(apex, 0.0, W)[[1, 2, 3, 5]]
+    D = M - np.eye(4) - (f @ grad_P)/(grad_P @ f) @ M
+    mul, dir = eig(D)
+    mul = np.abs(mul)
+    print(grad_P,f)
+    print(M)
+    idx_sorted = np.argsort(np.abs(mul))
     dir1, dir2 = dir[:, idx_sorted[0]], dir[:, idx_sorted[1]]
-    if np.linalg.norm(dir1 - dir_old) < np.linalg.norm(dir2 - dir_old):
+    if np.linalg.norm(np.abs(dir1) - np.abs(dir_old)) < np.linalg.norm(
+        np.abs(dir2) - np.abs(dir_old)
+    ):
         dir_continuation = dir1
         dir_bifurcation = dir2
     else:
         dir_continuation = dir2
         dir_bifurcation = dir1
-    return dir_continuation, dir_bifurcation, np.abs(mul[1] - 1)
-
+    return dir_continuation, dir_bifurcation, mul[idx_sorted[1]]

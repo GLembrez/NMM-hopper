@@ -21,7 +21,7 @@ def _():
     from continuation_opt import ContinuationSolver
 
 
-    return ContinuationSolver, cs, dynamics, np, params, plt, time, utils
+    return ContinuationSolver, cs, dynamics, np, params, plt, ss, time, utils
 
 
 @app.cell
@@ -81,22 +81,66 @@ def _(
     _E = utils.energy_flight(trajf_initial[:, 0])
     solver.initialize(trajf_initial, trajs_initial, dtf_initial, dts_initial, _E)
     _xfh, _xsh, _dtf, _dts = solver.solve()
-    N = 100
+    N = 2
     time_eval=0
+    mul_list = []
     for i in range(N):
         apex = _xfh[:, params.N_F // 2]
-        var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], apex, _dtf, _dts, _dtf)
-        _xfh, _xsh, _dtf, _dts = utils.initialize_next(var, apex, np.array([1,0,0,0]),0.025, K, W)
+        _var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], apex, _dtf, _dts, _dtf)
+        _xfh, _xsh, _dtf, _dts, mul, _, _dir = utils.initialize_next(_var, apex, np.array([1,0,0,0]),0.025, K, W)
+        mul_list.append(mul)
         _E = utils.energy_flight(_xfh[:, 0])
+        # if np.abs(mul)<1e-1:
+        #     print(mul,_dir,_var,_E)
         start = time()
         solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
         _xfh, _xsh, _dtf, _dts = solver.solve()
         end = time()
         time_eval += (end-start)/N
         record(branch,_xfh, _xsh, _dtf, _dts)
-    print(time_eval)
-    plt.plot(branch["E"])
-    return N, branch
+    plt.plot(mul_list)
+    return N, apex, branch
+
+
+@app.cell
+def _(K, W, apex, np, plt, solver, ss, utils):
+    _var = np.array( [0, 0.999963, 0, 0, -0.714195, 0, 0, 1, 0, 0.714143, 0, 1.255, 0, 0, -2.5977e-05, 0, 0.0285667, 0.0115425, 0.0285667])
+    _dir = np.array([ 0.,    -0.021, -0.64,  -0.768])
+    _E = utils.energy_flight(_var[:6])
+    _xfh, _xsh, _dtf, _dts = ss.trajectory(_var,K,W)
+    solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
+    _xfh, _xsh, _dtf, _dts = solver.solve()
+    dist = 0.05
+    if utils.energy_apex(apex[[1, 2, 3, 5]] + dist * _dir) < utils.energy_apex(apex[[1, 2, 3, 5]]):
+            dist = -dist
+    _apex = _var[10:16]
+    _apex[[1,2,3,5]] += dist * _dir 
+    _var = ss.full_newton(_var,_apex,K,W)
+    _xfh, _xsh, _dtf, _dts = ss.trajectory(_var,K,W)
+
+
+    plt.plot(_xfh[4,:].T)
+    plt.plot(_xfh[5,:].T)
+
+    # solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
+    # _xfh, _xsh, _dtf, _dts = solver.solve()
+
+
+
+    # plt.plot(_xfh[0,:].T,_xfh[1,:].T)
+    # plt.plot(_xsh[0,:].T,_xsh[1,:].T)
+
+
+    # _N = 0
+    # for _i in range(_N):
+    #     _apex = _xfh[:, params.N_F // 2]
+    #     _var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], _apex, _dtf, _dts, _dtf)
+    #     print(_E)
+    #     _xfh, _xsh, _dtf, _dts, _mul, _dir,_ = utils.initialize_next(_var, apex, _dir,dist, K, W)
+    #     _E = utils.energy_flight(_xfh[:, 0])
+    #     solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
+    #     _xfh, _xsh, _dtf, _dts = solver.solve()
+    return
 
 
 @app.cell
@@ -105,7 +149,6 @@ def _(N, branch, plt):
         plt.plot(branch["traj_f"][idx][1,:].T,branch["traj_f"][idx][4,:].T)
         plt.plot(branch["traj_s"][idx][1,:].T,branch["traj_s"][idx][4,:].T)
     plt.show()
-
     return
 
 

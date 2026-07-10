@@ -53,19 +53,23 @@ def init_trajectory(x0, K, W):
             i2 += 1
         alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
         x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
-    return x1h, x2h, sol1.t_events[0][0]/params.N_F, sol2.t_events[0]/params.N_S
+    return x1h, x2h, sol1.t_events[0][0] / params.N_F, sol2.t_events[0] / params.N_S
+
 
 def energy_flight(x):
     return 0.5 * (x[3] ** 2 + x[4] ** 2) + x[1]
 
+
 def energy_apex(x):
     return 0.5 * (x[2] ** 2) + x[0]
 
+
 def initialize_next(traj_compact, apex, dir_old, dist, K, W):
-    dir1, dir2, isBifurcation = ss.compute_multipliers(traj_compact, apex, dir_old, K, W)
-    if energy_apex(apex[[1, 2, 3, 5]] + dist * dir1) < energy_apex(apex[[1,2,3,5]]):
+    dir1, dir2, multiplier = ss.compute_multipliers(traj_compact, apex, dir_old, K, W)
+    if energy_apex(apex[[1, 2, 3, 5]] + dist * dir1) < energy_apex(apex[[1, 2, 3, 5]]):
         dist = -dist
-    x0 = apex.copy()
-    x0[[1, 2, 3, 5]] += dist * dir1
+    x0 = np.array(apex).reshape((6,1))
+    x0[[1, 2, 3, 5],:] += dist * dir1.reshape((4,1))
     var = ss.full_newton(traj_compact, x0, K, W)
-    return ss.trajectory(var, K, W)
+    xfh, xsh, dtf, dts = ss.trajectory(var, K, W)
+    return xfh, xsh, dtf, dts, multiplier, dir1, dir2

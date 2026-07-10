@@ -60,6 +60,7 @@ class ContinuationSolver:
             self.opti.subject_to(
                 self.traj_f[1:, 0] == dynamics.stance_to_flight(self.traj_s[:, -1])[1:]
             )
+            # self.opti.subject_to(self.traj_f[0,-1] == self.traj_s[0,0])
         else:
             pass
 

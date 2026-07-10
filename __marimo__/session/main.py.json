@@ -7,12 +7,117 @@
   "cells": [
     {
       "id": "Hbol",
-      "code_hash": "3bf0a7cd4e06a505fa71107e95ce9a74",
-      "outputs": [],
+      "code_hash": "08d6373aab660751653d3bed8265ac53",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
       "console": []
     },
     {
       "id": "MJUe",
+      "code_hash": "8bee39eb9beee55ccf995c724b2bffeb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "170a73015e07ab44d5e887c4c10c18a6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "d05c3f8015e7f3617816f31afbc8b699",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "d3cc46cbdb658374df08254e79b5b72f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "1d49ef30227f499baacb3572cf874b72",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "too many indices for array: array is 1-dimensional, but 2 were indexed",
+          "traceback": null
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "\n******************************************************************************\nThis program contains Ipopt, a library for large-scale nonlinear optimization.\n Ipopt is released as open source code under the Eclipse Public License (EPL).\n         For more information visit https://github.com/coin-or/Ipopt\n******************************************************************************\n\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Xref",
+      "code_hash": "43f292f2de860d7033b0b972162eefe9",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "An ancestor raised an exception (IndexError): ",
+          "traceback": null
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "7d93c69b1a107bead9b81d03a7b4eeb0",
+      "outputs": [
+        {
+          "type": "error",
+          "ename": "exception",
+          "evalue": "An ancestor raised an exception (IndexError): ",
+          "traceback": null
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
       "code_hash": null,
       "outputs": [],
       "console": []
