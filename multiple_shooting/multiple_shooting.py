@@ -58,46 +58,6 @@ stance_to_flight = cs.Function("stance_to_flight", [xs], [s2f])
 flight_to_stance = cs.Function("flight_to_stance", [xf], [f2s])
 
 
-### _______________________ CONTINUATION SOLVER ______________________________________
-
-
-opti = cs.Opti()
-opti.solver("ipopt", {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-12})
-
-energy = opti.parameter()
-
-dts = opti.variable()
-dtf = opti.variable()
-traj = opti.variable(6, N_F + N_S + N_F)
-
-for i in range(N_F - 1):
-    # flight dynamics constraint
-    opti.subject_to(traj[:, i + 1] == RK4f(traj[:, i], dtf))
-    opti.subject_to(traj[:, N_F + N_S + i + 1] == RK4f(traj[:, N_F + N_S + i], dtf))
-
-for i in range(N_S - 1):
-    # stance dynamics constraint
-    opti.subject_to(
-        traj[:, N_F + i + 1] == stance_to_flight(RK4s(traj[[0, 1, 3, 4], N_F + i], dts))
-    )
-
-# touch-down
-opti.subject_to(flight_to_stance(traj[:, N_F - 1]) == flight_to_stance(traj[:, N_F]))
-
-# lift-off
-opti.subject_to(
-    flight_to_stance(traj[:, N_F + N_S - 1]) == flight_to_stance(traj[:, N_F + N_S])
-)
-
-# periodicity
-opti.subject_to(traj[1:, 0] == traj[1:, -1])
-opti.subject_to(traj[0, 0] == 0)
-opti.subject_to(traj[0, N_F] == traj[0, N_F - 1])
-opti.subject_to(traj[0, N_F + N_S] == traj[0, N_F + N_S - 1])
-
-
-opti.subject_to(energy_flight(traj[:, 0]) == energy)
-
 ### _________________________ OOP FORMULATION ___________________________________
 
 
@@ -105,13 +65,15 @@ class ContinuationSolver:
 
     def __init__(self):
 
-        self.opti = cs.opti()
+        self.opti = cs.Opti()
         self.opti.solver(
             "ipopt", {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-12}
         )
 
         self.dt = self.opti.variable(2)
         self.traj = self.opti.variable(6, 2 * N_F + N_S)
+
+        self.Ed = self.opti.parameter()
 
         self.declare_constraints()
 
@@ -151,8 +113,47 @@ class ContinuationSolver:
         self.opti.subject_to(self.traj[0, N_F] == self.traj[0, N_F - 1])
         self.opti.subject_to(self.traj[0, N_F + N_S] == self.traj[0, N_F + N_S - 1])
 
+        z = cs.vertcat()
+        self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
+
+    def initialize(self, traj, dt,Ed):
+        self.opti.set_initial(self.traj, traj)
+        self.opti.set_initial(self.dt, dt)
+        self.opti.set_value(self.Ed,Ed)
+
+    def solve(self):
+        self.opti.solve()
+        return (
+            self.opti.value(self.traj),
+            self.opti.value(self.dt),
+        )
+
+
+### ________________________ BIFURCATIONS ______________________________________
+
+init = cs.SX.sym("init",6)
+apex = cs.SX.sym("apex",6)
+times = cs.SX.sym("times",2)
+z = cs.vertcat(apex,times)
+
+x_TD = traj_f(init,times[0])
+x_LO = traj_s(flight_to_stance(x_TD),times[1])
+x_a = traj_f(stance_to_flight(x_LO),times[0])
+
+R = cs.vertcat(x_a[1:] - apex[1:], cs.cos(x_TD[2]) - x_TD[1],x_LO[0]**2 + x_LO[1]**2 - 1,x_a[4])
+jac_R = cs.jacobian(R,z)
+newton = z - cs.inv(jac_R) @ R 
+jac_newton = cs.jacobian(newton[:6],init)
+
+eval_newton = cs.Function("eval_newton",[z,init],[newton])
+full_newton = eval_newton.fold(10)
+eval_residual = cs.Function('eval_residual',[init,apex,times],[R])
+monodromy = cs.Function("monodromy",[init,apex,times],[jac_newton[[1,2,3,5],[1,2,3,5]]])
+
 
 ### _______________________ INITIALISATION ______________________________________
+
+
 
 stance = lambda t, x: np.array(fs(x)).squeeze()
 flight = lambda t, x: np.array(ff(x)).squeeze()
@@ -226,22 +227,27 @@ def init_trajectory(x0):
 x0 = np.array([0.0, 1.1, 0.0, 0.0, 0.0, 0.0])
 traj_eval, dtf_eval, dts_eval = init_trajectory(x0)
 
-opti.set_initial(traj, traj_eval)
-opti.set_initial(dts, dts_eval)
-opti.set_initial(dtf, dtf_eval)
-opti.set_value(energy, energy_flight(traj_eval[:, 0]))
 
-opti.solve()
+solver = ContinuationSolver()
+solver.initialize(traj_eval, [dtf_eval, dts_eval],x0[1])
+traj_output, dt_output = solver.solve()
 
-traj_output = opti.value(traj)
+np.set_printoptions(precision = 3)
+z = full_newton(cs.vertcat(x0,dt_output),x0)
+print(x0.shape, z[:6].shape)
+M = monodromy(x0,z[:6],z[6:])
+values, vectors = np.linalg.eig(M)
+idx_sorted = np.argsort(np.abs(values - 1))
+print(vectors[:,idx_sorted[0]])
+
 plt.figure()
+plt.plot(traj_eval[1, :].T, traj_eval[4, :].T)
 plt.plot(traj_output[1, :].T, traj_output[4, :].T)
 plt.show()
 
 
 ## TODO
 # 1. Implement distance to previous + increasing energy constraint | remove energy constraint
-# 2. transform into class ContinuationSolver()
 # 3. implement continuation functions (monodromy, floquet, etc)
 # 4. add distance to explored branch constraint
 # 5. profit.
