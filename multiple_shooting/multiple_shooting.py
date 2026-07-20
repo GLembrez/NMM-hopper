@@ -12,7 +12,7 @@ np.set_printoptions(precision=3)
 
 N_F = 25
 N_S = 50
-K = 40
+K = 20
 W = cs.sqrt(10)
 
 
@@ -96,63 +96,76 @@ class ContinuationSolver:
             )
 
         # touch-down
-        self.opti.subject_to(
-            flight_to_stance(self.traj[:, N_F - 1])
-            == flight_to_stance(self.traj[:, N_F])
-        )
+        self.opti.subject_to(self.traj[1:, N_F - 1] == self.traj[1:,N_F]) # continuity of angular velocity ?
+        self.opti.subject_to(self.traj[1,N_F-1] == cs.cos(self.traj[2,N_F-1]))
 
         # lift-off
-        self.opti.subject_to(
-            flight_to_stance(self.traj[:, N_F + N_S - 1])
-            == flight_to_stance(self.traj[:, N_F + N_S])
-        )
+        self.opti.subject_to(self.traj[1:, N_F + N_S - 1] == self.traj[1:, N_F + N_S])
+        self.opti.subject_to(self.traj[0,N_F+N_S-1]**2 + self.traj[1,N_F+N_S-1]**2  == 1)
 
         # periodicity
         self.opti.subject_to(self.traj[1:, 0] == self.traj[1:, -1])
-        self.opti.subject_to(self.traj[0, 0] == 0)
         self.opti.subject_to(self.traj[0, N_F] == self.traj[0, N_F - 1])
         self.opti.subject_to(self.traj[0, N_F + N_S] == self.traj[0, N_F + N_S - 1])
 
-        z = cs.vertcat()
         self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
 
-    def initialize(self, traj, dt,Ed):
+    def initialize(self, traj, dt, Ed):
         self.opti.set_initial(self.traj, traj)
         self.opti.set_initial(self.dt, dt)
-        self.opti.set_value(self.Ed,Ed)
+        self.opti.set_value(self.Ed, Ed)
 
     def solve(self):
         self.opti.solve()
         return (
             self.opti.value(self.traj),
             self.opti.value(self.dt),
+            self.opti.value(self.Ed),
         )
 
 
 ### ________________________ BIFURCATIONS ______________________________________
 
-init = cs.SX.sym("init",6)
-apex = cs.SX.sym("apex",6)
-times = cs.SX.sym("times",2)
-z = cs.vertcat(apex,times)
+init = cs.SX.sym("init", 6)
+apex = cs.SX.sym("apex", 6)
+times = cs.SX.sym("times", 2)
+z = cs.vertcat(apex, times)
 
-x_TD = traj_f(init,times[0])
-x_LO = traj_s(flight_to_stance(x_TD),times[1])
-x_a = traj_f(stance_to_flight(x_LO),times[0])
+x_TD = traj_f(init, times[0])
+x_LO = traj_s(flight_to_stance(x_TD), times[1])
+x_a = traj_f(stance_to_flight(x_LO), times[0])
 
-R = cs.vertcat(x_a[1:] - apex[1:], cs.cos(x_TD[2]) - x_TD[1],x_LO[0]**2 + x_LO[1]**2 - 1,x_a[4])
-jac_R = cs.jacobian(R,z)
-newton = z - cs.inv(jac_R) @ R 
-jac_newton = cs.jacobian(newton[:6],init)
+R = cs.vertcat(
+    x_a[1:] - apex[1:],
+    cs.cos(x_TD[2]) - x_TD[1],
+    x_LO[0] ** 2 + x_LO[1] ** 2 - 1,
+    x_a[4],
+)
+jac_R = cs.jacobian(R, z)
+newton = z - cs.inv(jac_R) @ R
+jac_newton = cs.jacobian(newton[:6], init)
 
-eval_newton = cs.Function("eval_newton",[z,init],[newton])
+eval_newton = cs.Function("eval_newton", [z, init], [newton])
 full_newton = eval_newton.fold(10)
-eval_residual = cs.Function('eval_residual',[init,apex,times],[R])
-monodromy = cs.Function("monodromy",[init,apex,times],[jac_newton[[1,2,3,5],[1,2,3,5]]])
+eval_residual = cs.Function("eval_residual", [init, apex, times], [R])
+monodromy = cs.Function(
+    "monodromy", [init, apex, times], [jac_newton[[1, 2, 3, 5], [1, 2, 3, 5]]]
+)
+
+
+def estimation(traj_current, dt_current, traj_previous, dt_previous, d=1):
+    traj_next = traj_current + d * (traj_current - traj_previous)
+    dt_next = dt_current + d * (dt_current - dt_previous)
+    return traj_next, dt_next, energy_flight(traj_next[:, 0])
+
+
+def register(traj, dt, E, branch):
+    branch["traj"].append(traj.copy())
+    branch["dt"].append(dt.copy())
+    branch["E"].append(E)
 
 
 ### _______________________ INITIALISATION ______________________________________
-
 
 
 stance = lambda t, x: np.array(fs(x)).squeeze()
@@ -168,24 +181,24 @@ apex.terminal = True
 apex.direction = -1
 
 
-def solver(x0, fun, event):
+def integration(x0, fun, event):
     return solve_ivp(
         fun=fun,
         t_span=(0.0, 10.0),
         y0=x0,
         method="DOP853",
+        max_step=0.1,
         rtol=1e-12,
         atol=1e-12,
         events=(event),
-        vectorized=True,
     )
 
 
 def init_trajectory(x0):
-    sol1 = solver(x0, flight, touch_down)
+    sol1 = integration(x0, flight, touch_down)
     y1 = sol1.y_events[0][0]
     x02 = np.array([-np.sin(y1[2]), np.cos(y1[2]), y1[3], y1[4]])
-    sol2 = solver(x02, stance, lift_off)
+    sol2 = integration(x02, stance, lift_off)
     y2 = sol2.y_events[0][0]
     x03 = np.array(
         [
@@ -197,7 +210,7 @@ def init_trajectory(x0):
             y2[0] * y2[3] - y2[1] * y2[2],
         ]
     )
-    sol3 = solver(x03, flight, apex)
+    sol3 = integration(x03, flight, apex)
     T1 = np.linspace(0, sol1.t_events[0], N_F)
     T2 = np.linspace(0, sol2.t_events[0], N_S)
     T3 = np.linspace(0, sol3.t_events[0], N_F)
@@ -217,6 +230,7 @@ def init_trajectory(x0):
             i2 += 1
         alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
         x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
+    x1h[0,:] += x2h[0,0] - x1h[0,-1]
     traj = cs.horzcat(x1h, stance_to_flight(x2h), x3h)
     dtf = sol1.t_events[0] / N_F
     dts = sol2.t_events[0] / N_S
@@ -224,25 +238,63 @@ def init_trajectory(x0):
     return traj, dtf, dts
 
 
-x0 = np.array([0.0, 1.1, 0.0, 0.0, 0.0, 0.0])
-traj_eval, dtf_eval, dts_eval = init_trajectory(x0)
+###___________________________ CONTINUATION ______________________________________________
+from tqdm import tqdm
 
+x0 = np.array([0.0, 1.225, 0.0, 0.0, 0.0, 0.0])
+traj_eval, dtf_eval, dts_eval = init_trajectory(x0)
+N = 5
+branch = {"traj": [], "E": [], "dt": [], "mul": [], "dir": []}
 
 solver = ContinuationSolver()
-solver.initialize(traj_eval, [dtf_eval, dts_eval],x0[1])
-traj_output, dt_output = solver.solve()
-
-np.set_printoptions(precision = 3)
-z = full_newton(cs.vertcat(x0,dt_output),x0)
-print(x0.shape, z[:6].shape)
-M = monodromy(x0,z[:6],z[6:])
+solver.initialize(traj_eval, [dtf_eval, dts_eval], x0[1])
+traj_output, dt_output, E_output = solver.solve()
+register(traj_output, dt_output, E_output, branch)
+z = full_newton(cs.vertcat(traj_output[:,0], dt_output), traj_output[:,0])
+M = monodromy(x0, z[:6], z[6:])
 values, vectors = np.linalg.eig(M)
 idx_sorted = np.argsort(np.abs(values - 1))
-print(vectors[:,idx_sorted[0]])
+
+x1 = x0.copy()
+x1[[1,2,3,5]] += 0.001 * vectors[:,idx_sorted[1]]
+traj_eval, dtf_eval, dts_eval = init_trajectory(x1)
+solver.initialize(traj_eval, [dtf_eval, dts_eval], energy_flight(x1))
+traj_output, dt_output, E_output = solver.solve()
+register(traj_output, dt_output, E_output, branch)
+
+print(values, '\n' ,vectors)
+
+
+# register(traj_output, dt_output, E_output, branch)
+# solver.initialize(traj_output, dt_output, x0[1] + 0.01)
+# traj_output, dt_output, E_output = solver.solve()
+# register(traj_output, dt_output, E_output, branch)
+
+
+for step in tqdm(range(N)):
+    traj_init, dt_init, E_init = estimation(
+        branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], 1.5
+    )
+    solver.initialize(traj_init, dt_init, E_init)
+    traj_output, dt_output, E_output = solver.solve()
+    register(traj_output, dt_output, E_output, branch)
+    z = full_newton(cs.vertcat(traj_output[:,0], dt_output), traj_output[:,0])
+    M = monodromy(x0, z[:6], z[6:])
+    values, vectors = np.linalg.eig(M)
+    idx_sorted = np.argsort(np.abs(values - 1))
+    branch["mul"].append(values[idx_sorted[1:]])
+    branch["dir"].append(vectors[:,idx_sorted[0]])
+    # if np.abs(values - 1)[idx_sorted[1]] < 0.1:
+    #     print(values[idx_sorted[1]],traj_output[:,0])
+
+
 
 plt.figure()
-plt.plot(traj_eval[1, :].T, traj_eval[4, :].T)
-plt.plot(traj_output[1, :].T, traj_output[4, :].T)
+plt.grid()
+# plt.plot(traj_eval[0, :].T, traj_eval[1, :].T)
+# plt.plot(traj_output[0, :].T, traj_output[1, :].T)
+plt.plot(np.array([T[2, :].T for T in branch["traj"]]).T, np.array([T[5, :].T for T in branch["traj"]]).T)
+# plt.plot(branch["mul"])
 plt.show()
 
 
