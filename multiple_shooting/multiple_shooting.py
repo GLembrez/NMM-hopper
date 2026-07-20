@@ -154,8 +154,9 @@ monodromy = cs.Function(
 
 
 def estimation(traj_current, dt_current, traj_previous, dt_previous, d=1):
-    traj_next = traj_current + d * (traj_current - traj_previous)
-    dt_next = dt_current + d * (dt_current - dt_previous)
+    dtraj = traj_current - traj_previous
+    traj_next = traj_current + d * dtraj/cs.norm_fro(dtraj)
+    dt_next = dt_current + (dt_current - dt_previous)
     return traj_next, dt_next, energy_flight(traj_next[:, 0])
 
 
@@ -241,60 +242,77 @@ def init_trajectory(x0):
 ###___________________________ CONTINUATION ______________________________________________
 from tqdm import tqdm
 
-x0 = np.array([0.0, 1.225, 0.0, 0.0, 0.0, 0.0])
+x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0]) # 1.830 1.225
 traj_eval, dtf_eval, dts_eval = init_trajectory(x0)
-N = 5
-branch = {"traj": [], "E": [], "dt": [], "mul": [], "dir": []}
+N = 200
+branch = {"traj": [], "E": [], "dt": []}
+distance = 0.1
+epsilon = 0.15
 
 solver = ContinuationSolver()
 solver.initialize(traj_eval, [dtf_eval, dts_eval], x0[1])
 traj_output, dt_output, E_output = solver.solve()
 register(traj_output, dt_output, E_output, branch)
-z = full_newton(cs.vertcat(traj_output[:,0], dt_output), traj_output[:,0])
-M = monodromy(x0, z[:6], z[6:])
-values, vectors = np.linalg.eig(M)
-idx_sorted = np.argsort(np.abs(values - 1))
-
-x1 = x0.copy()
-x1[[1,2,3,5]] += 0.001 * vectors[:,idx_sorted[1]]
-traj_eval, dtf_eval, dts_eval = init_trajectory(x1)
-solver.initialize(traj_eval, [dtf_eval, dts_eval], energy_flight(x1))
-traj_output, dt_output, E_output = solver.solve()
-register(traj_output, dt_output, E_output, branch)
-
-print(values, '\n' ,vectors)
 
 
-# register(traj_output, dt_output, E_output, branch)
-# solver.initialize(traj_output, dt_output, x0[1] + 0.01)
+# z = full_newton(cs.vertcat(traj_output[:,0], dt_output), traj_output[:,0])
+# M = monodromy(x0, z[:6], z[6:])
+# values, vectors = np.linalg.eig(M)
+# idx_sorted = np.argsort(np.abs(values - 1))
+
+# x1 = x0.copy()
+# x1[[1,2,3,5]] += 0.01 * vectors[:,idx_sorted[1]]
+# traj_eval, dtf_eval, dts_eval = init_trajectory(x1)
+# solver.initialize(traj_eval, [dtf_eval, dts_eval], energy_flight(x1))
 # traj_output, dt_output, E_output = solver.solve()
 # register(traj_output, dt_output, E_output, branch)
 
 
+
+solver.initialize(traj_output, dt_output, x0[1] + 0.005)
+traj_output, dt_output, E_output = solver.solve()
+register(traj_output, dt_output, E_output, branch)
+
+floquet = []
+previous_mul = None 
+
 for step in tqdm(range(N)):
     traj_init, dt_init, E_init = estimation(
-        branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], 1.5
+        branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], distance
     )
     solver.initialize(traj_init, dt_init, E_init)
-    traj_output, dt_output, E_output = solver.solve()
+    try:
+        traj_output, dt_output, E_output = solver.solve()
+    except:
+        print('end of branch reached')
+        break
     register(traj_output, dt_output, E_output, branch)
     z = full_newton(cs.vertcat(traj_output[:,0], dt_output), traj_output[:,0])
     M = monodromy(x0, z[:6], z[6:])
     values, vectors = np.linalg.eig(M)
+    floquet.append(values)
     idx_sorted = np.argsort(np.abs(values - 1))
-    branch["mul"].append(values[idx_sorted[1:]])
-    branch["dir"].append(vectors[:,idx_sorted[0]])
-    # if np.abs(values - 1)[idx_sorted[1]] < 0.1:
-    #     print(values[idx_sorted[1]],traj_output[:,0])
+    if np.abs(values[idx_sorted[1]]-1)<epsilon:
+        distance = 0.025
+        if previous_mul == None:
+            previous_mul = values[idx_sorted[1]]-1
+        elif previous_mul * (values[idx_sorted[1]]-1) < 0:
+            print("bifurcation reached")
+            print(previous_mul , (values[idx_sorted[1]]-1))
+            coeff = np.real(previous_mul/(previous_mul - values[idx_sorted[1]]+1))
+            traj_bifurcation = coeff * branch["traj"][-1] + (1-coeff)*branch["traj"][-2]
+            dt_bifurcation = coeff * branch["dt"][-1] + (1-coeff) * branch["dt"][-2]
+            print(traj_bifurcation[1,0])
+            break
+    else:
+        distance = 0.1
 
 
-
-plt.figure()
-plt.grid()
-# plt.plot(traj_eval[0, :].T, traj_eval[1, :].T)
-# plt.plot(traj_output[0, :].T, traj_output[1, :].T)
-plt.plot(np.array([T[2, :].T for T in branch["traj"]]).T, np.array([T[5, :].T for T in branch["traj"]]).T)
-# plt.plot(branch["mul"])
+fig = plt.figure()
+# plt.plot(np.abs(floquet))
+ax = fig.add_subplot(projection='3d')
+for T in branch["traj"]:
+    ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
 
 
