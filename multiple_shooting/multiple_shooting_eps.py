@@ -20,32 +20,33 @@ W = cs.sqrt(10)
 
 xs = cs.SX.sym("xs", 4)
 xf = cs.SX.sym("xf", 6)
+epsilon = cs.SX.sym("epsilon")
 dt = cs.SX.sym("dt")
 
 l = cs.sqrt(xs[0] ** 2 + xs[1] ** 2)
 Es = 0.5 * (xs[2] ** 2 + xs[3] ** 2) + xs[1] + 0.5 * (l - 1) ** 2
 Ef = 0.5 * (xf[3] ** 2 + xf[4] ** 2) + xf[1]
-dxs = cs.vertcat(xs[2:], K * (1 - l) * xs[0] / l, K * (1 - l) * xs[1] / l - 1)
-dxf = cs.vertcat(xf[3:], 0, -1, -(W**2) * xf[2])
+dxs = cs.vertcat(xs[2:], K * (1 - l) * xs[0] / l, K * (1 - l) * xs[1] / l - 1) + epsilon * cs.gradient(Es,xs)
+dxf = cs.vertcat(xf[3:], 0, -1, -(W**2) * xf[2]) + epsilon * cs.gradient(Ef,xf)
 
-ff = cs.Function("ff", [xf], [dxf])
-fs = cs.Function("fs", [xs], [dxs])
+ff = cs.Function("ff", [xf,epsilon], [dxf])
+fs = cs.Function("fs", [xs,epsilon], [dxs])
 energy_flight = cs.Function("energy_flight", [xf], [Ef])
 energy_stance = cs.Function("energy_stance", [xs], [Es])
 
-k1s = fs(xs)
-k1f = ff(xf)
-k2s = fs(xs + dt / 2 * k1s)
-k2f = ff(xf + dt / 2 * k1f)
-k3s = fs(xs + dt / 2 * k2s)
-k3f = ff(xf + dt / 2 * k2f)
-k4s = fs(xs + dt * k3s)
-k4f = ff(xf + dt * k3f)
+k1s = fs(xs,epsilon)
+k1f = ff(xf,epsilon)
+k2s = fs(xs + dt / 2 * k1s,epsilon)
+k2f = ff(xf + dt / 2 * k1f,epsilon)
+k3s = fs(xs + dt / 2 * k2s,epsilon)
+k3f = ff(xf + dt / 2 * k2f,epsilon)
+k4s = fs(xs + dt * k3s,epsilon)
+k4f = ff(xf + dt * k3f,epsilon)
 xs_ = xs + dt / 6 * (k1s + 2 * k2s + 2 * k3s + k4s)
 xf_ = xf + dt / 6 * (k1f + 2 * k2f + 2 * k3f + k4f)
 
-RK4s = cs.Function("RK4s", [xs, dt], [xs_])
-RK4f = cs.Function("RK4f", [xf, dt], [xf_])
+RK4s = cs.Function("RK4s", [xs, dt,epsilon], [xs_])
+RK4f = cs.Function("RK4f", [xf, dt,epsilon], [xf_])
 traj_f = RK4f.fold(N_F)
 traj_s = RK4s.fold(N_S)
 
@@ -72,6 +73,7 @@ class ContinuationSolver():
 
         self.dt = self.opti.variable(2)
         self.traj = self.opti.variable(6, 2 * N_F + N_S)
+        self.epsilon = self.opti.variable(2*N_F + N_S)
 
         self.Ed = self.opti.parameter()
 
@@ -82,18 +84,18 @@ class ContinuationSolver():
         for i in range(N_F - 1):
             # flight dynamics constraint
             self.opti.subject_to(
-                self.traj[:, i + 1] == RK4f(self.traj[:, i], self.dt[0])
+                self.traj[:, i + 1] == RK4f(self.traj[:, i], self.dt[0], self.epsilon[i])
             )
             self.opti.subject_to(
                 self.traj[:, N_F + N_S + i + 1]
-                == RK4f(self.traj[:, N_F + N_S + i], self.dt[0])
+                == RK4f(self.traj[:, N_F + N_S + i], self.dt[0], self.epsilon[N_F+N_S+i])
             )
 
         for i in range(N_S - 1):
             # stance dynamics constraint
             self.opti.subject_to(
                 self.traj[:, N_F + i + 1]
-                == stance_to_flight(RK4s(self.traj[[0, 1, 3, 4], N_F + i], self.dt[1]))
+                == stance_to_flight(RK4s(self.traj[[0, 1, 3, 4], N_F + i], self.dt[1], self.epsilon[N_F+i]))
             )
 
         # touch-down
@@ -109,6 +111,10 @@ class ContinuationSolver():
 
         self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
 
+        self.opti.minimize(self.epsilon.T @ self.epsilon)
+        # for i in range(N_S + 2*N_F):
+        #     self.opti.minimize(cs.fabs(self.epsilon[i]) < 1e-6)
+
     def set_periodicity(self):
         if self.periodic:
             # periodicity
@@ -121,6 +127,7 @@ class ContinuationSolver():
     def initialize(self, traj, dt, Ed):
         self.opti.set_initial(self.traj, traj)
         self.opti.set_initial(self.dt, dt)
+        self.opti.set_initial(self.epsilon, cs.GenDM_zeros(2*N_F+N_S))
         self.opti.set_value(self.Ed, Ed)
 
     def solve(self):
@@ -141,9 +148,9 @@ apex = cs.SX.sym("apex", 5)
 times = cs.SX.sym("times", 2)
 z = cs.vertcat(apex, times)
 
-x_TD = traj_f(cs.vertcat(0.0,init), times[0])
-x_LO = traj_s(flight_to_stance(x_TD), times[1])
-x_a = traj_f(stance_to_flight(x_LO), times[0])
+x_TD = traj_f(cs.vertcat(0.0,init), times[0],0.0)
+x_LO = traj_s(flight_to_stance(x_TD), times[1],0.0)
+x_a = traj_f(stance_to_flight(x_LO), times[0],0.0)
 
 R = cs.vertcat(
     x_a[1:] - apex,
@@ -169,9 +176,6 @@ monodromy_reverse = cs.Function(
 def estimation(traj_current, dt_current, traj_previous, dt_previous, d=1):
     dtraj = traj_current - traj_previous
     traj_next = traj_current + d * dtraj/cs.norm_fro(dtraj)
-    if energy_flight(traj_next[:,0]) < energy_flight(traj_current[:,0]):
-        traj_next = traj_current - d * dtraj/cs.norm_fro(dtraj)
-
     dt_next = dt_current + (dt_current - dt_previous)
     return traj_next, dt_next, energy_flight(traj_next[:, 0])
 
@@ -185,8 +189,8 @@ def register(traj, dt, E, branch):
 ### _______________________ INITIALISATION ______________________________________
 
 
-stance = lambda t, x: np.array(fs(x)).squeeze()
-flight = lambda t, x: np.array(ff(x)).squeeze()
+stance = lambda t, x: np.array(fs(x,0.0)).squeeze()
+flight = lambda t, x: np.array(ff(x,0.0)).squeeze()
 touch_down = lambda t, x: x[1] - np.cos(x[2])
 lift_off = lambda t, x: x[0] ** 2 + x[1] ** 2 - 1
 apex = lambda t, x: x[4]
@@ -265,8 +269,8 @@ ax = fig.add_subplot(projection='3d')
 # # for y0 in [1.12359,1.27227]:
 x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0]) # 1.830 1.225
 traj_eval, dt_eval = init_trajectory(x0)
-N = 400
-distance = 0.01
+N = 200
+distance = 0.1
 epsilon = 0.15
 periodic = True
 solver = ContinuationSolver(periodic)
@@ -381,7 +385,7 @@ while to_explore and idx_branch<n_branch:
         values, vectors = np.linalg.eig(M)
         idx_sorted = np.argsort(np.abs(values))
         if np.abs(values[idx_sorted[1]])<epsilon:
-            distance = 0.01
+            distance = 0.1
             if previous_mul == None:
                 previous_mul = values[idx_sorted[1]]
             elif previous_mul * (values[idx_sorted[1]]) < 0:
@@ -405,6 +409,3 @@ for branch in components:
     ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
 
-
-# TODO 
-# distance = abs(clip(values[idx_sorted[1]],min,max))
