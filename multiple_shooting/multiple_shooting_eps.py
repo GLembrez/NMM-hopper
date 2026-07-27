@@ -61,6 +61,7 @@ flight_to_stance = cs.Function("flight_to_stance", [xf], [f2s])
 ### _________________________ OOP FORMULATION ___________________________________
 
 
+
 class ContinuationSolver():
 
     def __init__(self,periodic):
@@ -73,8 +74,8 @@ class ContinuationSolver():
 
         self.dt = self.opti.variable(2)
         self.traj = self.opti.variable(6, 2 * N_F + N_S)
-        self.epsilon = self.opti.variable(2*N_F + N_S)
 
+        self.epsilon = self.opti.variable(2*N_F + N_S)
         self.Ed = self.opti.parameter()
 
         self.declare_constraints()
@@ -88,14 +89,14 @@ class ContinuationSolver():
             )
             self.opti.subject_to(
                 self.traj[:, N_F + N_S + i + 1]
-                == RK4f(self.traj[:, N_F + N_S + i], self.dt[0], self.epsilon[N_F+N_S+i])
+                == RK4f(self.traj[:, N_F + N_S + i], self.dt[0], self.epsilon[N_F + N_S + i])
             )
 
         for i in range(N_S - 1):
             # stance dynamics constraint
             self.opti.subject_to(
                 self.traj[:, N_F + i + 1]
-                == stance_to_flight(RK4s(self.traj[[0, 1, 3, 4], N_F + i], self.dt[1], self.epsilon[N_F+i]))
+                == stance_to_flight(RK4s(self.traj[[0, 1, 3, 4], N_F + i], self.dt[1], self.epsilon[N_F + i]))
             )
 
         # touch-down
@@ -112,8 +113,6 @@ class ContinuationSolver():
         self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
 
         self.opti.minimize(self.epsilon.T @ self.epsilon)
-        # for i in range(N_S + 2*N_F):
-        #     self.opti.minimize(cs.fabs(self.epsilon[i]) < 1e-6)
 
     def set_periodicity(self):
         if self.periodic:
@@ -127,8 +126,8 @@ class ContinuationSolver():
     def initialize(self, traj, dt, Ed):
         self.opti.set_initial(self.traj, traj)
         self.opti.set_initial(self.dt, dt)
-        self.opti.set_initial(self.epsilon, cs.GenDM_zeros(2*N_F+N_S))
         self.opti.set_value(self.Ed, Ed)
+        self.opti.set_initial(self.epsilon, cs.GenDM_zeros(2*N_F + N_S))
 
     def solve(self):
         self.opti.solve()
@@ -175,7 +174,7 @@ monodromy_reverse = cs.Function(
 
 def estimation(traj_current, dt_current, traj_previous, dt_previous, d=1):
     dtraj = traj_current - traj_previous
-    traj_next = traj_current + d * dtraj/cs.norm_fro(dtraj)
+    traj_next = traj_current + dtraj
     dt_next = dt_current + (dt_current - dt_previous)
     return traj_next, dt_next, energy_flight(traj_next[:, 0])
 
@@ -269,79 +268,11 @@ ax = fig.add_subplot(projection='3d')
 # # for y0 in [1.12359,1.27227]:
 x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0]) # 1.830 1.225
 traj_eval, dt_eval = init_trajectory(x0)
-N = 200
-distance = 0.1
+N = 400
+distance = 0.01
 epsilon = 0.15
-periodic = True
+periodic = False
 solver = ContinuationSolver(periodic)
-
-
-# branch = {"traj": [], "E": [], "dt": []}
-# solver.initialize(traj_eval, dt_eval, x0[1])
-# traj_output, dt_output, E_output = solver.solve()
-# register(traj_output, dt_output, E_output, branch)
-
-
-# z = full_newton(cs.vertcat(traj_output[1:,0], dt_output), traj_output[1:,0])
-# M = monodromy(traj_eval[:1,-1], z[:5], z[5:])
-# R = np.eye(4) if periodic else np.array([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,-1]])
-# values, vectors = np.linalg.eig(R @ M)
-# idx_sorted = np.argsort(np.abs(values - 1))
-
-# x1 = x0.copy()
-# x1[[1,2,3,5]] += 1e-2 * vectors[:,idx_sorted[1]].real
-# traj_eval, dt_eval = init_trajectory(x1)
-# solver.initialize(traj_eval, dt_eval, energy_flight(x1))
-# traj_output, dt_output, E_output = solver.solve()
-# register(traj_output, dt_output, E_output, branch)
-
-
-
-# solver.initialize(traj_output, dt_output, x0[1] + 0.005)
-# traj_output, dt_output, E_output = solver.solve()
-# register(traj_output, dt_output, E_output, branch)
-
-# floquet = []
-# previous_mul = None 
-
-# for step in tqdm(range(N)):
-#     traj_init, dt_init, E_init = estimation(
-#         branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], distance
-#     )
-#     solver.initialize(traj_init, dt_init, E_init)
-#     try:
-#         traj_output, dt_output, E_output = solver.solve()
-#     except:
-#         print('end of branch reached')
-#         break
-#     if np.min(traj_output[1,:]) < 0:
-#         print('end of branch reached')
-#         break
-#     register(traj_output, dt_output, E_output, branch)
-#     z = full_newton(cs.vertcat(traj_output[1:,0], dt_output), traj_output[1:,0])
-#     M = monodromy(traj_output[1:,-1], z[:5], z[5:])
-#     R = np.eye(4) if periodic else np.array([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,-1]])
-#     values, vectors = np.linalg.eig(R @ M)
-#     floquet.append(values)
-#     idx_sorted = np.argsort(np.abs(values))
-#     if np.abs(values[idx_sorted[1]])<epsilon:
-#         distance = 0.01
-#         if previous_mul == None:
-#             previous_mul = values[idx_sorted[1]]
-#         elif previous_mul * (values[idx_sorted[1]]) < 0:
-#             print("bifurcation reached")
-#             coeff = np.real(previous_mul/(previous_mul - values[idx_sorted[1]]))
-#             traj_bifurcation = (1-coeff) * branch["traj"][-2] + (coeff)*branch["traj"][-1]
-#             dt_bifurcation = (1-coeff) * branch["dt"][-2] + (coeff) * branch["dt"][-1]
-#             print(traj_bifurcation[1,0], branch["traj"][-2][1,0] , branch["traj"][-1][1,0])
-#             previous_mul = None
-#     else:
-#         distance = 0.1
-    
-# # ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]))
-# # for T in branch["traj"]:
-# #     ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]),alpha=0.5,lw=0.5)
-
 
 
 from collections import deque
@@ -352,15 +283,17 @@ idx_branch = 0
 n_branch = 10
 
 while to_explore and idx_branch<n_branch:
+    dE = 1e-6
     previous_mul = None
     branch = {"traj": [], "E": [], "dt": []}
     traj_eval,dt_eval,v = to_explore.popleft()
+    current_bifurcation = traj_eval[1:,0]
     E = energy_flight(traj_eval[:,0])
     register(traj_eval, dt_eval, E, branch)
     x0 = traj_eval[:,0].copy()
-    x0[[1,2,3,5]] += 0.001 * np.real(v)
+    x0[[1,2,3,5]] += 1e-3 * np.real(v)
     traj_eval, dt_eval = init_trajectory(x0)
-    solver.initialize(traj_eval, dt_eval, energy_flight(traj_eval[:,0]))
+    solver.initialize(traj_eval, dt_eval, branch["E"][-1] + dE)
     traj_eval, dt_eval, E = solver.solve()
     register(traj_eval, dt_eval, E, branch)
     print("exploring branch {}".format(idx_branch))
@@ -370,7 +303,7 @@ while to_explore and idx_branch<n_branch:
         traj_eval, dt_eval, E = estimation(
             branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], distance
         )
-        solver.initialize(traj_eval, dt_eval, E)
+        solver.initialize(traj_eval, dt_eval, branch["E"][-1]+dE)
         try:
             traj_eval, dt_eval, E = solver.solve()
         except:
@@ -384,28 +317,31 @@ while to_explore and idx_branch<n_branch:
         M = monodromy(traj_eval[1:,-1], z[:5], z[5:]) if periodic else monodromy_reverse(traj_eval[1:,-1], z[:5], z[5:])
         values, vectors = np.linalg.eig(M)
         idx_sorted = np.argsort(np.abs(values))
-        if np.abs(values[idx_sorted[1]])<epsilon:
-            distance = 0.1
+
+        dist_to_bifurcation = np.linalg.norm(current_bifurcation - traj_eval[1:,0])
+        dE = np.clip(min(0.1*np.abs(values[idx_sorted[1]]),0.1*dist_to_bifurcation),1e-6,1e-2)
+
+        if np.abs(values[idx_sorted[1]])<epsilon and dist_to_bifurcation > 0.1:
             if previous_mul == None:
                 previous_mul = values[idx_sorted[1]]
-            elif previous_mul * (values[idx_sorted[1]]) < 0:
+            if previous_mul * (values[idx_sorted[1]]) < 0:
                 coeff = np.real(previous_mul/(previous_mul - values[idx_sorted[1]]))
                 traj_bifurcation = coeff * branch["traj"][-1] + (1-coeff)*branch["traj"][-2]
                 dt_bifurcation = coeff * branch["dt"][-1] + (1-coeff) * branch["dt"][-2]
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[0]]))
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[1]]))
                 print("bifurcation reached at height {}".format(traj_bifurcation[1,0]))
+                print(dist_to_bifurcation)
                 break
-        else:
-            distance = 0.1
+            previous_mul =  values[idx_sorted[1]]
     
     components.append(branch)
 
 
 # plt.plot(np.mod(floquet))
 for branch in components:
-    ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]))
+    print(branch["E"][0],branch["E"][1])
+    ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]), marker='.',linewidth=0)
     T = branch["traj"][-1]
     ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
-

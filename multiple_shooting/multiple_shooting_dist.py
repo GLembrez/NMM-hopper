@@ -73,7 +73,8 @@ class ContinuationSolver():
         self.dt = self.opti.variable(2)
         self.traj = self.opti.variable(6, 2 * N_F + N_S)
 
-        self.Ed = self.opti.parameter()
+        self.traj_prev = self.opti.parameter(6)
+        self.d = self.opti.parameter()
 
         self.declare_constraints()
         self.set_periodicity()
@@ -107,7 +108,10 @@ class ContinuationSolver():
         # apex 
         self.opti.subject_to(self.traj[4,0]==0)
 
-        self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
+        self.opti.subject_to(energy_flight(self.traj[:,0])>energy_flight(self.traj_prev[:,0]))
+        dist_poincare = self.traj[1:,0] - self.traj_prev[1:]
+        self.opti.subject_to(dist_poincare.T @ dist_poincare == self.d ** 2)
+        # self.opti.subject_to(energy_flight(self.traj[:, 0]) == self.Ed)
 
     def set_periodicity(self):
         if self.periodic:
@@ -118,17 +122,18 @@ class ContinuationSolver():
             self.opti.subject_to(self.traj[1,0] == self.traj[1,-1])
             self.opti.subject_to(self.traj[[2,3,5],0] == -self.traj[[2,3,5],-1])
 
-    def initialize(self, traj, dt, Ed):
+    def initialize(self, traj, dt, d, traj_prev):
         self.opti.set_initial(self.traj, traj)
         self.opti.set_initial(self.dt, dt)
-        self.opti.set_value(self.Ed, Ed)
+        self.opti.set_value(self.d, d)
+        self.opti.set_value(self.traj_prev,traj_prev)
 
     def solve(self):
         self.opti.solve()
         return (
             self.opti.value(self.traj),
             self.opti.value(self.dt),
-            self.opti.value(self.Ed),
+            self.opti.value(energy_flight(self.traj[:,0])),
         )
 
 
@@ -171,8 +176,9 @@ def estimation(traj_current, dt_current, traj_previous, dt_previous, d=1):
     # traj_next = traj_current + d * dtraj/cs.norm_fro(dtraj)
     # if energy_flight(traj_next[:,0]) < energy_flight(traj_current[:,0]):
     #     traj_next = traj_current - d * dtraj/cs.norm_fro(dtraj)
-    traj_next = traj_current + dtraj
+
     dt_next = dt_current + (dt_current - dt_previous)
+    traj_next = traj_current + dtraj
     return traj_next, dt_next, energy_flight(traj_next[:, 0])
 
 
@@ -234,16 +240,16 @@ def init_trajectory(x0):
     x1h, x2h, x3h = np.zeros((6, N_F)), np.zeros((4, N_S)), np.zeros((6, N_F))
     i1, i2, i3 = 0, 0, 0
     for i in range(N_F):
-        while T1[i] > sol1.t[i1 + 1]:
+        if T1[i] > sol1.t[i1 + 1]:
             i1 += 1
-        while T3[i] > sol3.t[i3 + 1]:
+        if T3[i] > sol3.t[i3 + 1]:
             i3 += 1
         alpha1 = (T1[i] - sol1.t[i1]) / (sol1.t[i1 + 1] - sol1.t[i1])
         alpha3 = (T3[i] - sol3.t[i3]) / (sol3.t[i3 + 1] - sol3.t[i3])
         x1h[:, i] = (1 - alpha1) * sol1.y[:, i1] + alpha1 * sol1.y[:, i1 + 1]
         x3h[:, i] = (1 - alpha3) * sol3.y[:, i3] + alpha3 * sol3.y[:, i3 + 1]
     for i in range(N_S):
-        while T2[i] > sol2.t[i2 + 1]:
+        if T2[i] > sol2.t[i2 + 1]:
             i2 += 1
         alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
         x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
@@ -345,20 +351,18 @@ to_explore = deque()
 to_explore.append((traj_eval,dt_eval,np.array([1.0,0.0,0.0,0.0])))
 components = []
 idx_branch = 0
-n_branch = 10
+n_branch = 5
 
 while to_explore and idx_branch<n_branch:
-    dE = 1e-6
     previous_mul = None
     branch = {"traj": [], "E": [], "dt": []}
     traj_eval,dt_eval,v = to_explore.popleft()
-    current_bifurcation = traj_eval[1:,0]
     E = energy_flight(traj_eval[:,0])
     register(traj_eval, dt_eval, E, branch)
     x0 = traj_eval[:,0].copy()
-    x0[[1,2,3,5]] += 1e-3 * np.real(v)
+    x0[[1,2,3,5]] += 1e-4 * np.real(v)
     traj_eval, dt_eval = init_trajectory(x0)
-    solver.initialize(traj_eval, dt_eval, branch["E"][-1] + dE)
+    solver.initialize(traj_eval, dt_eval, 0., traj_eval[:,0])
     traj_eval, dt_eval, E = solver.solve()
     register(traj_eval, dt_eval, E, branch)
     print("exploring branch {}".format(idx_branch))
@@ -368,7 +372,7 @@ while to_explore and idx_branch<n_branch:
         traj_eval, dt_eval, E = estimation(
             branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2], distance
         )
-        solver.initialize(traj_eval, dt_eval, branch["E"][-1]+dE)
+        solver.initialize(traj_eval, dt_eval, distance, branch["traj"][-1][:,0])
         try:
             traj_eval, dt_eval, E = solver.solve()
         except:
@@ -382,11 +386,8 @@ while to_explore and idx_branch<n_branch:
         M = monodromy(traj_eval[1:,-1], z[:5], z[5:]) if periodic else monodromy_reverse(traj_eval[1:,-1], z[:5], z[5:])
         values, vectors = np.linalg.eig(M)
         idx_sorted = np.argsort(np.abs(values))
-
-        dist_to_bifurcation = np.linalg.norm(current_bifurcation - traj_eval[1:,0])
-        dE = np.clip(min(0.1*np.abs(values[idx_sorted[1]]),0.1*dist_to_bifurcation),1e-6,1e-2)
-
-        if np.abs(values[idx_sorted[1]])<epsilon and dist_to_bifurcation > 0.1:
+        if np.abs(values[idx_sorted[1]])<epsilon:
+            distance = 0.002
             if previous_mul == None:
                 previous_mul = values[idx_sorted[1]]
             if previous_mul * (values[idx_sorted[1]]) < 0:
@@ -396,19 +397,20 @@ while to_explore and idx_branch<n_branch:
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[0]]))
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[1]]))
                 print("bifurcation reached at height {}".format(traj_bifurcation[1,0]))
-                print(dist_to_bifurcation)
                 break
+            # if np.abs(values[idx_sorted[1]]) < np.abs(previous_mul):
             previous_mul =  values[idx_sorted[1]]
+        else:
+            distance = 0.01
     
     components.append(branch)
 
 
 # plt.plot(np.mod(floquet))
 for branch in components:
-    print(branch["E"][0],branch["E"][1])
-    ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]), marker='.',linewidth=0)
-    T = branch["traj"][-1]
-    ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
+    ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]))
+    # T = branch["traj"][-1]
+    # ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
 
 

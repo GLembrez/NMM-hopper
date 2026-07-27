@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.9"
+__generated_with = "0.23.14"
 app = marimo.App()
 
 
@@ -9,9 +9,9 @@ def _():
     import marimo as mo
     import numpy as np
     import casadi as cs
-    from scipy.linalg import eig
     from matplotlib import pyplot as plt
     from time import time
+    from collections import deque
     import sys
 
     import simple_shooting as ss
@@ -20,8 +20,7 @@ def _():
     import continuation_functions as utils
     from continuation_opt import ContinuationSolver
 
-
-    return ContinuationSolver, cs, dynamics, np, params, plt, ss, time, utils
+    return ContinuationSolver, cs, dynamics, np, plt, ss, utils
 
 
 @app.cell
@@ -31,129 +30,128 @@ def _(np):
 
 
 @app.cell
-def _(ContinuationSolver, cs):
-    K = 40
-    W = cs.sqrt(10)
-
-    solver = ContinuationSolver(K,W)
-    return K, W, solver
-
-
-@app.cell
-def _(K, W, np, utils):
-    x0 = np.array([0.,1.,0.,0.,0.1,0.])
-    trajf_initial,trajs_initial,dtf_initial,dts_initial = utils.init_trajectory(x0,K,W)
-    return dtf_initial, dts_initial, trajf_initial, trajs_initial
+def _(ContinuationSolver, np):
+    periodic = True
+    n_steps = 400
+    n_branch = 10
+    dE_min = 1e-6
+    dE_max = 1e-2
+    floquet_threshold = 0.15
+    x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0])
+    solver = ContinuationSolver(periodic)
+    return dE_max, dE_min, floquet_threshold, n_steps, periodic, solver, x0
 
 
 @app.cell
-def _(dynamics, utils):
-    def record(branch,trajf,trajs,dtf,dts):
-        branch["traj_f"].append(trajf)
-        branch["traj_s"].append(dynamics.stance_to_flight(trajs))
-        branch["dt_f"].append(dtf)
-        branch["dt_s"].append(dts)
-        branch["E"].append(utils.energy_flight(trajf[:,0]))
+def _(cs, np, periodic, ss):
+    def floquet_analysis(traj, dt):
+        z = ss.full_newton(cs.vertcat(traj[1:, 0], dt), traj[1:, 0])
+        if periodic:
+            M = ss.monodromy(traj[1:, -1], z[:5], z[5:])
+        else:
+            M = ss.monodromy_reverse(traj[1:, -1], z[:5], z[5:])
+        val,vec = np.linalg.eig(M)
+        idx_sorted = np.argsort(np.abs(val))
+        return val[idx_sorted], vec[:,idx_sorted]
 
-    return (record,)
+    return (floquet_analysis,)
 
 
 @app.cell
 def _(
-    K,
-    W,
-    cs,
-    dtf_initial,
-    dts_initial,
+    dE_max,
+    dE_min,
+    dynamics,
+    floquet_analysis,
+    floquet_threshold,
+    n_steps,
     np,
-    params,
-    plt,
-    record,
     solver,
-    time,
-    trajf_initial,
-    trajs_initial,
     utils,
 ):
-    branch = {"E": [], "dir": [], "traj_f": [], "traj_s": [], "dt_f": [], "dt_s": []}
+    def explore_component(traj, dt, v):
 
+        branch = {"traj": [], "E": [], "dt": []}
+        to_explore = []
+        floquet_multipliers = []
+        previous_val = 10.0
+        dE = dE_min
+        bifurcation = traj[1:, 0]
+        E = float(dynamics.energy_flight(traj[:, 0]))
+        utils.register(traj, dt, E, branch)
+        x0 = traj[:, 0].copy()
+        x0[[1, 2, 3, 5]] += 1e-3 * np.real(v)
+        traj, dt = utils.init_trajectory(x0)
+        solver.initialize(traj, dt, branch["E"][-1] + dE)
+        traj, dt, E = solver.solve()
+        utils.register(traj, dt, E, branch)
 
-    _E = utils.energy_flight(trajf_initial[:, 0])
-    solver.initialize(trajf_initial, trajs_initial, dtf_initial, dts_initial, _E)
-    _xfh, _xsh, _dtf, _dts = solver.solve()
-    N = 2
-    time_eval=0
-    mul_list = []
-    for i in range(N):
-        apex = _xfh[:, params.N_F // 2]
-        _var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], apex, _dtf, _dts, _dtf)
-        _xfh, _xsh, _dtf, _dts, mul, _, _dir = utils.initialize_next(_var, apex, np.array([1,0,0,0]),0.025, K, W)
-        mul_list.append(mul)
-        _E = utils.energy_flight(_xfh[:, 0])
-        # if np.abs(mul)<1e-1:
-        #     print(mul,_dir,_var,_E)
-        start = time()
-        solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
-        _xfh, _xsh, _dtf, _dts = solver.solve()
-        end = time()
-        time_eval += (end-start)/N
-        record(branch,_xfh, _xsh, _dtf, _dts)
-    plt.plot(mul_list)
-    return N, apex, branch
+        for step in range(n_steps):
 
+            if (traj[1, :] < 0).any():
+                print("collision with ground | end of branch")
+                break
 
-@app.cell
-def _(K, W, apex, np, plt, solver, ss, utils):
-    _var = np.array( [0, 0.999963, 0, 0, -0.714195, 0, 0, 1, 0, 0.714143, 0, 1.255, 0, 0, -2.5977e-05, 0, 0.0285667, 0.0115425, 0.0285667])
-    _dir = np.array([ 0.,    -0.021, -0.64,  -0.768])
-    _E = utils.energy_flight(_var[:6])
-    _xfh, _xsh, _dtf, _dts = ss.trajectory(_var,K,W)
-    solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
-    _xfh, _xsh, _dtf, _dts = solver.solve()
-    dist = 0.05
-    if utils.energy_apex(apex[[1, 2, 3, 5]] + dist * _dir) < utils.energy_apex(apex[[1, 2, 3, 5]]):
-            dist = -dist
-    _apex = _var[10:16]
-    _apex[[1,2,3,5]] += dist * _dir 
-    _var = ss.full_newton(_var,_apex,K,W)
-    _xfh, _xsh, _dtf, _dts = ss.trajectory(_var,K,W)
+            traj, dt = utils.estimation(
+                branch["traj"][-1], branch["dt"][-1], branch["traj"][-2], branch["dt"][-2]
+            )
+            solver.initialize(traj, dt, branch["E"][-1] + dE)
+            try:
+                traj, dt, E = solver.solve()
+            except:
+                print("solver failed | end of branch")
+                break
+            utils.register(traj, dt, E, branch)
 
+            val, vec = floquet_analysis(traj, dt)
+            floquet_multipliers.append(val)
+            distance_bifurcation = np.linalg.norm(bifurcation - traj[1:, 0])
+            if (
+                np.abs(val[1]) < floquet_threshold
+                and distance_bifurcation > 0.1
+                and previous_val * val[1] < 0
+            ):
+                coeff = np.real(previous_val / (previous_val - val[1]))
+                traj_bifurcation = (
+                    coeff * branch["traj"][-1] + (1 - coeff) * branch["traj"][-2]
+                )
+                dt_bifurcation = coeff * branch["dt"][-1] + (1 - coeff) * branch["dt"][-2]
+                to_explore.append((traj_bifurcation, dt_bifurcation, vec[:, 0]))
+                to_explore.append((traj_bifurcation, dt_bifurcation, vec[:, 1]))
+                break
 
-    plt.plot(_xfh[4,:].T)
-    plt.plot(_xfh[5,:].T)
+            dE = np.clip(0.1 * np.abs(val[1]), dE_min, dE_max)
+            previous_val = val[1]
 
-    # solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
-    # _xfh, _xsh, _dtf, _dts = solver.solve()
+        return branch, to_explore, floquet_multipliers
 
-
-
-    # plt.plot(_xfh[0,:].T,_xfh[1,:].T)
-    # plt.plot(_xsh[0,:].T,_xsh[1,:].T)
-
-
-    # _N = 0
-    # for _i in range(_N):
-    #     _apex = _xfh[:, params.N_F // 2]
-    #     _var = cs.vertcat(_xfh[:, -1], _xsh[:, -1], _apex, _dtf, _dts, _dtf)
-    #     print(_E)
-    #     _xfh, _xsh, _dtf, _dts, _mul, _dir,_ = utils.initialize_next(_var, apex, _dir,dist, K, W)
-    #     _E = utils.energy_flight(_xfh[:, 0])
-    #     solver.initialize(_xfh, _xsh, _dtf, _dts,_E)
-    #     _xfh, _xsh, _dtf, _dts = solver.solve()
-    return
+    return (explore_component,)
 
 
 @app.cell
-def _(N, branch, plt):
-    for idx in range(N):
-        plt.plot(branch["traj_f"][idx][1,:].T,branch["traj_f"][idx][4,:].T)
-        plt.plot(branch["traj_s"][idx][1,:].T,branch["traj_s"][idx][4,:].T)
+def _(explore_component, np, utils, x0):
+
+    traj_eval, dt_eval = utils.init_trajectory(x0)
+    branch,to_explore, multipliers = explore_component(traj_eval,dt_eval,np.array([1.0,0.0,0.0,0.0]))
+    return branch, multipliers, to_explore
+
+
+@app.cell
+def _(branch, multipliers, np, plt, to_explore):
+    traj_collection = np.array(branch["traj"])
+    print(to_explore[0][0][:,0],to_explore[0][1],to_explore[0][2])
+
+    fig = plt.figure(figsize=(10,5))
+    ax1 = fig.add_subplot(1,2,1)
+    ax1.plot(np.array(branch["E"])[2:], multipliers, marker='.',linestyle ='')
+
+    ax2 = fig.add_subplot(1,2,2,projection='3d')
+    ax2.plot(traj_collection[:,1,:],traj_collection[:,2,:],traj_collection[:,3,:],linewidth=2)
+    ax2.xaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax2.yaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+    ax2.zaxis.set_pane_color((1.0, 1.0, 1.0, 0.0))
+
     plt.show()
-    return
-
-
-@app.cell
-def _():
     return
 
 

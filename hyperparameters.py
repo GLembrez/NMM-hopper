@@ -1,6 +1,6 @@
-N_S         = 50    # number of discrete samples during stance
-N_F         = 51    # [MUST BE ODD] number of discrete samples during flight 
-N_STEPS     = 1000  # maximum number of continuation steps along a branch
-N_BRANCH    = 5     # maximum number of explored branches
-ENERGY_MAX  = 3.2   # maximum allowed energy on a branch
-ENERGY_STEP = 0.01  # energy increment between two continuation steps
+import casadi as cs
+
+N_F = 25
+N_S = 50
+K = 40
+W = cs.sqrt(10)

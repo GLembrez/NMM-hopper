@@ -1,75 +1,77 @@
 import casadi as cs
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy.integrate import solve_ivp
 import hyperparameters as params
-import simple_shooting as ss
 import dynamics
 
-stance = lambda t, x, K: np.array(dynamics.fs(x, 0, K)).squeeze()
-flight = lambda t, x, W: np.array(dynamics.ff(x, 0, W)).squeeze()
-touch_down = lambda t, x, arg: x[1] - np.cos(x[2])
-lift_off = lambda t, x, arg: x[0] ** 2 + x[1] ** 2 - 1
-apex = lambda t, x, arg: x[4]
+stance = lambda t, x: np.array(dynamics.fs(x)).squeeze()
+flight = lambda t, x: np.array(dynamics.ff(x)).squeeze()
+touch_down = lambda t, x: x[1] - np.cos(x[2])
+lift_off = lambda t, x: x[0] ** 2 + x[1] ** 2 - 1
+apex = lambda t, x: x[4]
 touch_down.terminal = True
 touch_down.direction = -1
 lift_off.terminal = True
 lift_off.direction = 1
-apex.terminal = False
+apex.terminal = True
 apex.direction = -1
 
 
-def solver(x0, fun, events, args):
+def integration(x0, fun, event):
     return solve_ivp(
         fun=fun,
         t_span=(0.0, 10.0),
         y0=x0,
-        max_step=1e-1,
-        method="RK45",
+        method="DOP853",
+        max_step=5e-2,
         rtol=1e-12,
         atol=1e-12,
-        events=events,
-        args=args,
-        vectorized=True,
+        events=(event),
     )
 
 
-def init_trajectory(x0, K, W):
-    sol1 = solver(x0, flight, (touch_down, apex), (W,))
-    y1 = sol1.y_events[0][0]
-    x02 = np.array([-np.sin(y1[2]), np.cos(y1[2]), y1[3], y1[4]])
-    sol2 = solver(x02, stance, (lift_off,), (K,))
-    T1 = np.linspace(0, sol1.t_events[0][0], params.N_F)
-    T2 = np.linspace(0, sol2.t_events[0], params.N_S)
-    x1h, x2h = np.zeros((6, params.N_F)), np.zeros((4, params.N_S))
-    i1, i2 = 0, 0
-    for i in range(params.N_F):
-        while T1[i] > sol1.t[i1 + 1]:
-            i1 += 1
-        alpha1 = (T1[i] - sol1.t[i1]) / (sol1.t[i1 + 1] - sol1.t[i1])
-        x1h[:, i] = (1 - alpha1) * sol1.y[:, i1] + alpha1 * sol1.y[:, i1 + 1]
-    for i in range(params.N_S):
-        while T2[i] > sol2.t[i2 + 1]:
-            i2 += 1
-        alpha2 = (T2[i] - sol2.t[i2]) / (sol2.t[i2 + 1] - sol2.t[i2])
-        x2h[:, i] = (1 - alpha2) * sol2.y[:, i2] + alpha2 * sol2.y[:, i2 + 1]
-    return x1h, x2h, sol1.t_events[0][0] / params.N_F, sol2.t_events[0] / params.N_S
+def interpolate(traj, N):
+    n = traj.y.shape[0]
+    k = 0
+    T = np.linspace(0.0, traj.t_events[0], N)
+    xh = np.zeros((n, N))
+    for i in range(N):
+        while T[i] > traj.t[k + 1]:
+            k += 1
+        a = (T[i] - traj.t[k]) / (traj.t[k + 1] - traj.t[k])
+        xh[:, i] = (1 - a) * traj.y[:, k] + a * traj.y[:, k + 1]
+    return xh
 
 
-def energy_flight(x):
-    return 0.5 * (x[3] ** 2 + x[4] ** 2) + x[1]
+def init_trajectory(x_apex):
+    apex_to_TD = integration(x_apex, flight, touch_down)
+    x_TD = apex_to_TD.y_events[0][0]
+    x0_TD = np.array([-np.sin(x_TD[2]), np.cos(x_TD[2]), x_TD[3], x_TD[4]])
+    TD_to_LO = integration(x0_TD, stance, lift_off)
+    x_LO = TD_to_LO.y_events[0][0]
+    x0_LO = np.array(dynamics.stance_to_flight(x_LO)).reshape((6,))
+    LO_to_apex = integration(x0_LO, flight, apex)
+
+    x1h = interpolate(apex_to_TD, params.N_F)
+    x2h = interpolate(TD_to_LO, params.N_S)
+    x3h = interpolate(LO_to_apex, params.N_F)
+
+    x1h[0, :] += x2h[0, 0] - x1h[0, -1]
+    traj_output = np.hstack([x1h, dynamics.stance_to_flight(x2h), x3h])
+    dtf = apex_to_TD.t_events[0] / params.N_F
+    dts = TD_to_LO.t_events[0] / params.N_S
+
+    return traj_output, np.concatenate([dtf, dts])
 
 
-def energy_apex(x):
-    return 0.5 * (x[2] ** 2) + x[0]
+def estimation(traj_current, dt_current, traj_previous, dt_previous):
+    dtraj = traj_current - traj_previous
+    traj_next = traj_current + dtraj
+    dt_next = dt_current + (dt_current - dt_previous)
+    return traj_next, dt_next
 
 
-def initialize_next(traj_compact, apex, dir_old, dist, K, W):
-    dir1, dir2, multiplier = ss.compute_multipliers(traj_compact, apex, dir_old, K, W)
-    if energy_apex(apex[[1, 2, 3, 5]] + dist * dir1) < energy_apex(apex[[1, 2, 3, 5]]):
-        dist = -dist
-    x0 = np.array(apex).reshape((6,1))
-    x0[[1, 2, 3, 5],:] += dist * dir1.reshape((4,1))
-    var = ss.full_newton(traj_compact, x0, K, W)
-    xfh, xsh, dtf, dts = ss.trajectory(var, K, W)
-    return xfh, xsh, dtf, dts, multiplier, dir1, dir2
+def register(traj, dt, E, branch):
+    branch["traj"].append(traj.copy())
+    branch["dt"].append(dt.copy())
+    branch["E"].append(E)
