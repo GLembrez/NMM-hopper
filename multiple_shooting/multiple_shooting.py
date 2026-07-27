@@ -345,7 +345,7 @@ to_explore = deque()
 to_explore.append((traj_eval,dt_eval,np.array([1.0,0.0,0.0,0.0])))
 components = []
 idx_branch = 0
-n_branch = 10
+n_branch = 5
 
 while to_explore and idx_branch<n_branch:
     previous_mul = None
@@ -384,7 +384,7 @@ while to_explore and idx_branch<n_branch:
             distance = 0.01
             if previous_mul == None:
                 previous_mul = values[idx_sorted[1]]
-            elif previous_mul * (values[idx_sorted[1]]) < 0:
+            if previous_mul * (values[idx_sorted[1]]) < 0:
                 coeff = np.real(previous_mul/(previous_mul - values[idx_sorted[1]]))
                 traj_bifurcation = coeff * branch["traj"][-1] + (1-coeff)*branch["traj"][-2]
                 dt_bifurcation = coeff * branch["dt"][-1] + (1-coeff) * branch["dt"][-2]
@@ -392,6 +392,8 @@ while to_explore and idx_branch<n_branch:
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[1]]))
                 print("bifurcation reached at height {}".format(traj_bifurcation[1,0]))
                 break
+            # if np.abs(values[idx_sorted[1]]) < np.abs(previous_mul):
+            previous_mul =  values[idx_sorted[1]]
         else:
             distance = 0.1
     
@@ -401,8 +403,8 @@ while to_explore and idx_branch<n_branch:
 # plt.plot(np.mod(floquet))
 for branch in components:
     ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]))
-    T = branch["traj"][-1]
-    ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
+    # T = branch["traj"][-1]
+    # ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
 
 
