@@ -99,7 +99,7 @@ phi = cs.SX.sym("phi",10)
 b = du1.T @ cs.jtimes(R_tilde, u, du2).T @ phi
 hessian = cs.Function('Hessian',[u,du1,du2,phi],[b])
 
-z0 = np.array([0.0,1.01,0.,0.,0.,0.,0.1,0.01,0.1,0.0])
+z0 = np.array([0.0,1.2,0.,0.,0.,0.,0.1,0.01,0.1,0.0])
 E = z0[1]
 d = 0.005
 p_list = []
@@ -145,13 +145,13 @@ beta1 = -b22/(2*b12)
 c_star = beta1*c1 + beta2*c2
 c_star = c_star / np.linalg.norm(c_star)
 
-d = 0.01
+d = -0.05
 precision = 0
 u_next = cs.vertcat(z_star,E) +  d * c_star
 z0 = u_next[:10]
 E = u_next[10]
 start = time()
-for i in range(1000):
+for i in range(200):
     print(z0[3])
     z_star = newton_step(z0,E)
     u_list.append(cs.vertcat(z_star,E))
