@@ -64,13 +64,24 @@ x_TD = traj_f(x0, t[0],xi)
 x_LO = traj_s(flight_to_stance(x_TD), t[1],xi)
 x_a = traj_f(stance_to_flight(x_LO), t[2],xi)
 
+# root = cs.vertcat(
+#     x_a[1:] - x0[1:],
+#     x0[0],
+#     x0[4],
+#     energy_flight(x0) - E,
+#     cs.cos(x_TD[2]) - x_TD[1],
+#     x_LO[0] ** 2 + x_LO[1] ** 2 - 1
+# )
+
 root = cs.vertcat(
-    x_a[1:] - x0[1:],
+    x_a[[1,4]] - x0[[1,4]],
+    x_a[[2,3,5]] + x0[[2,3,5]],
     x0[0],
     x0[4],
     energy_flight(x0) - E,
     cs.cos(x_TD[2]) - x_TD[1],
     x_LO[0] ** 2 + x_LO[1] ** 2 - 1
+
 )
 
 R_bar = cs.jacobian(root, z)
