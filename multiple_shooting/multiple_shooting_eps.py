@@ -268,15 +268,15 @@ from tqdm import tqdm
 
 
 fig = plt.figure()
-ax = fig.add_subplot(projection='3d')
+# ax = fig.add_subplot(projection='3d')
 
 # # for y0 in [1.12359,1.27227]:
 x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0]) # 1.830 1.225
 traj_eval, dt_eval = init_trajectory(x0)
-N = 400
+N = 200
 distance = 0.01
 epsilon = 0.15
-periodic = True
+periodic = False
 solver = ContinuationSolver(periodic)
 
 
@@ -285,12 +285,12 @@ to_explore = deque()
 to_explore.append((traj_eval,dt_eval,np.array([1,0,0,0])))
 components = []
 idx_branch = 0
-n_branch = 10
+n_branch = 1
 floquet = []
 energy = []
 
 while to_explore and idx_branch<n_branch:
-    dE = 1e-3
+    dE = 1e-6
     previous_mul = None
     branch = {"traj": [], "E": [], "dt": []}
     traj_eval,dt_eval,v = to_explore.popleft()
@@ -328,7 +328,7 @@ while to_explore and idx_branch<n_branch:
         idx_sorted = np.argsort(np.abs(values))
 
         dist_to_bifurcation = np.linalg.norm(current_bifurcation - traj_eval[1:,0])
-        dE = np.clip(min(0.1*np.abs(values[idx_sorted[1]]),0.1*dist_to_bifurcation),1e-3,1e-2)
+        dE = np.clip(min(0.1*np.abs(values[idx_sorted[1]]),0.1*dist_to_bifurcation),1e-6,1e-2)
         floquet.append(values[idx_sorted])
 
         if np.abs(values[idx_sorted[1]])<epsilon and dist_to_bifurcation > 0.1 and np.abs(values[idx_sorted[1]].imag)<1e-3:
@@ -342,17 +342,18 @@ while to_explore and idx_branch<n_branch:
                 to_explore.append((traj_bifurcation,dt_bifurcation,vectors[:,idx_sorted[1]]))
                 print("bifurcation reached at height {}".format(traj_bifurcation[1,0]))
                 print(vectors[:,idx_sorted[1]])
-                break
+                # break
             previous_mul =  np.real(values[idx_sorted[1]])
     
     components.append(branch)
 
 
-# plt.plot(energy,[f for f in floquet])
+plt.plot(energy,([f.real for f in floquet]))
+plt.plot(energy,([f.imag for f in floquet]))
 # plt.plot([f.real for f in floquet], [f.imag for f in floquet])
-for branch in components:
-    print(branch["E"][0],branch["E"][1])
-    ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]), marker='.',linewidth=0)
-    T =  branch["traj"][-1]
-    ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
+# for branch in components:
+#     print(branch["E"][0],branch["E"][1])
+#     ax.plot(np.array([T[1,0] for T in branch["traj"]]),np.array([T[2,0] for T in branch["traj"]]),np.array([T[3,0] for T in branch["traj"]]), marker='.',linewidth=0)
+#     T =  branch["traj"][-1]
+#     ax.plot(np.array(T[1, :]), np.array(T[2, :]),np.array(T[3, :]))
 plt.show()
