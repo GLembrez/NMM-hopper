@@ -6,23 +6,26 @@ from scipy.linalg import null_space
 from time import time
 from copy import deepcopy
 
-np.set_printoptions(precision=9)
+np.set_printoptions(precision=3, suppress=True)
 
 N_F = 25
 N_S = 50
 K = 40
 W = cs.sqrt(10)
-N_BRANCH = 2
-N_STEPS = 100
-N_NEWTON = 10
+N_BRANCH = 5
+N_STEPS = 1000
+N_NEWTON = 2
 N_BIFUR = 10
+STEP_SIZE = 0.01
 
 
 def process_bifurcation(_u, _J, p):
     c1 = -deepcopy(p)
     val, vec = np.linalg.eig(cs.vertcat(_J, c1.T))
     idx_val = np.argmin(np.abs(val))
-    c2 = vec[:, idx_val].real
+    c2 = vec[:, idx_val].real.reshape((11,1))
+    c2 =  c2 - np.dot(c1.T,c2) * c1 
+    c2 = c2 / np.linalg.norm(c2)
     val, vec = np.linalg.eig(_J @ _J.T)
     idx_val = np.argmin(np.abs(val))
     e = vec[:, idx_val].real
@@ -32,36 +35,41 @@ def process_bifurcation(_u, _J, p):
     beta1 = -b22 / (2 * b12)
     c_star = beta1 * c1 + beta2 * c2
     c_star = c_star / np.linalg.norm(c_star)
-    return [(_u, c1), (_u, c_star)]
+    return deque([(_u, -c_star),(_u, c1)])
 
 
 def explore_branch(BP, to_explore):
     branch = []
     p_list = []
     bifurcation_step = 0
-    d = 0.005
     _u, p = BP
-    _z,_E = _u[:10], _u[10]
+    p_next = null_space(compute_J(_u + 0.001 * p))
+    d = STEP_SIZE if p[-1] > 0 else - STEP_SIZE
+    print(np.array(p).reshape((1,11)))
 
     for step in range(N_STEPS):
+
+        if step>5 and p_list[-2].T @ p_list[-1] < 0:
+            d = 0.5 * d
+            bifurcation_step += 1
+
+        # d = - np.abs(d) if p[-1]<0 else np.abs(d)
+        p_list.append(p)
+        branch.append(_u)
+        _u += d * p 
+        _z,_E = _u[:10], _u[10]
         z_star = newton(_z,_E)
         _u = cs.vertcat(z_star,_E)
         _J = compute_J(_u)
         p = null_space(_J)
-        branch.append(_u)
-        p_list.append(p)
-        if np.linalg.det(cs.vertcat(_J,p.T)) <0:
-            d = -np.abs(d)
-        else:
-            d = np.abs(d)
-        _u += d * p 
-        if step > 5 and p_list[2].T @ p_list[1] < 0:
-            d = 0.5 * d
-            bifurcation_step += 1
-        _z,_E = _u[:10], _u[10]
+
+        if np.linalg.det(cs.vertcat(_J,p.T)) < 0:
+            p = -p
 
         if bifurcation_step == N_BIFUR:
-            to_explore = process_bifurcation(_u,_J,p)
+            initial_conditions = process_bifurcation(_u,_J,p)
+            for ic in initial_conditions:
+                to_explore.append(ic)
             return branch, to_explore
 
     return branch, to_explore
@@ -180,13 +188,16 @@ while to_explore and idx_branch < N_BRANCH:
     branch, to_explore = explore_branch(bifurcation_point, to_explore)
     connected_component.append(branch)
 
-
-
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1,projection="3d")
 for i in range(len(connected_component)):
     branch = np.array(connected_component[i])
+    tangent = np.array(branch[2]-branch[1])
+    print((tangent/np.linalg.norm(tangent)).reshape((1,11)))
     plt.plot(branch[:,1],branch[:,2],branch[:,3])
 plt.show()
+
+print(connected_component[0][0],connected_component[0][1],connected_component[0][2])
+
 
 # TODO verify orthogonality of span ker(J)

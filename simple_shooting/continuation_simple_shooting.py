@@ -99,6 +99,11 @@ phi = cs.SX.sym("phi",10)
 b = du1.T @ cs.jtimes(R_tilde, u, du2).T @ phi
 hessian = cs.Function('Hessian',[u,du1,du2,phi],[b])
 
+
+
+fig = plt.figure()
+ax = fig.add_subplot(1,1,1,projection="3d")
+
 z0 = np.array([0.0,1.2,0.,0.,0.,0.,0.1,0.01,0.1,0.0])
 E = z0[1]
 d = 0.005
@@ -145,7 +150,7 @@ beta1 = -b22/(2*b12)
 c_star = beta1*c1 + beta2*c2
 c_star = c_star / np.linalg.norm(c_star)
 
-d = -0.05
+d = 0.05
 precision = 0
 u_next = cs.vertcat(z_star,E) +  d * c_star
 z0 = u_next[:10]
@@ -174,9 +179,86 @@ for i in range(200):
 end = time()
 print(F(u_next))
 
-
-fig = plt.figure()
-ax = fig.add_subplot(1,1,1,projection="3d")
 branch = np.array(u_list)
 plt.plot(branch[:,1],branch[:,2],branch[:,3])
+
+
+z0 = np.array([0.0,1.01,0.,0.,0.,0.,0.1,0.01,0.1,0.0])
+E = z0[1]
+d = 0.005
+p_list = []
+u_list = []
+precision = 0
+
+start = time()
+for i in range(1000):
+    z_star = newton_step(z0,E)
+    u_list.append(cs.vertcat(z_star,E))
+    R_eval = compute_R(cs.vertcat(z_star,z_star[1]))
+    p = null_space(R_eval)
+    if i>5 and p_list[i-2].T @ p_list[i-1] < 0:
+        d = 0.5 * d
+        precision += 1
+    if np.linalg.det(cs.vertcat(R_eval,p.T)) < 0:
+        p = -p
+    # else:
+    u_next = cs.vertcat(z_star,E) +  d * p
+    if precision == 10:
+        print(i)
+        break
+    z0 = u_next[:10]
+    E = u_next[10]
+    p_list.append(p)
+end = time()
+print(end-start,E)
+
+c1 = -p 
+val,vec = np.linalg.eig(cs.vertcat(R_eval,c1.T))
+idx_val = np.argmin(np.abs(val))
+c2 = vec[:,idx_val].real
+val,vec = np.linalg.eig(R_eval@R_eval.T)
+idx_val = np.argmin(np.abs(val))
+e = vec[:,idx_val].real
+
+b11 = hessian(u_next,c1,c1,e)
+b12 = hessian(u_next,c1,c2,e)
+b22 = hessian(u_next,c2,c2,e)
+
+beta2 = 1
+beta1 = -b22/(2*b12)
+c_star = beta1*c1 + beta2*c2
+c_star = c_star / np.linalg.norm(c_star)
+
+d = 0.05
+precision = 0
+u_next = cs.vertcat(z_star,E) +  d * c_star
+z0 = u_next[:10]
+E = u_next[10]
+start = time()
+for i in range(400):
+    print(z0[3])
+    z_star = newton_step(z0,E)
+    u_list.append(cs.vertcat(z_star,E))
+    R_eval = compute_R(cs.vertcat(z_star,z_star[1]))
+    p = null_space(R_eval)
+    # if i>5 and p_list[i-2].T @ p_list[i-1] < 0:
+    #     d = 0.5 * d
+    #     precision += 1
+    if np.linalg.det(cs.vertcat(R_eval,p.T)) < 0:
+        d = -np.abs(d)
+    else:
+        d = np.abs(d)
+    # else:
+    u_next = cs.vertcat(z_star,E) +  d * p
+    # if precision == 10:
+        # break
+    z0 = u_next[:10]
+    E = u_next[10]
+    p_list.append(p)
+end = time()
+print(F(u_next))
+
+branch = np.array(u_list)
+plt.plot(branch[:,1],branch[:,2],branch[:,3])
+
 plt.show()
