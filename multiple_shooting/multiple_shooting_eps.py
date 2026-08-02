@@ -273,6 +273,7 @@ fig = plt.figure()
 # # for y0 in [1.12359,1.27227]:
 x0 = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0]) # 1.830 1.225
 traj_eval, dt_eval = init_trajectory(x0)
+print(dt_eval)
 N = 200
 distance = 0.01
 epsilon = 0.15

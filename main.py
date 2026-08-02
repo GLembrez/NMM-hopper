@@ -18,7 +18,7 @@ def _():
     import dynamics
     import hyperparameters as params
     import continuation_functions as utils
-    from continuation_opt import ContinuationSolver
+    from solver import ContinuationSolver
 
     return ContinuationSolver, cs, dynamics, np, plt, ss, utils
 

@@ -8,11 +8,11 @@ from copy import deepcopy
 
 np.set_printoptions(precision=3, suppress=True)
 
-N_F = 25
-N_S = 50
+N_F = 250
+N_S = 500
 K = 40
 W = cs.sqrt(10)
-N_BRANCH = 5
+N_BRANCH = 3
 N_STEPS = 1000
 N_NEWTON = 2
 N_BIFUR = 10
@@ -174,7 +174,7 @@ to_explore = deque()
 idx_branch = 0
 connected_component = []
 
-_z = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0, 0.1, 0.01, 0.1, 0.0])
+_z = np.array([0.0, 1.01, 0.0, 0.0, 0.0, 0.0, 0.01, 0.001, 0.01, 0.0])
 _E = _z[1]
 _z_star = newton(_z, _E)
 _u = cs.vertcat(_z_star, _E)
@@ -193,7 +193,7 @@ ax = fig.add_subplot(1,1,1,projection="3d")
 for i in range(len(connected_component)):
     branch = np.array(connected_component[i])
     tangent = np.array(branch[2]-branch[1])
-    print((tangent/np.linalg.norm(tangent)).reshape((1,11)))
+    print((tangent/np.linalg.norm(tangent)).reshape((1,11)),'\n')
     plt.plot(branch[:,1],branch[:,2],branch[:,3])
 plt.show()
 
