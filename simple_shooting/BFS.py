@@ -193,11 +193,7 @@ ax = fig.add_subplot(1,1,1,projection="3d")
 for i in range(len(connected_component)):
     branch = np.array(connected_component[i])
     tangent = np.array(branch[2]-branch[1])
-    print((tangent/np.linalg.norm(tangent)).reshape((1,11)),'\n')
     plt.plot(branch[:,1],branch[:,2],branch[:,3])
 plt.show()
 
-print(connected_component[0][0],connected_component[0][1],connected_component[0][2])
-
-
-# TODO verify orthogonality of span ker(J)
+print(connected_component[1][500])

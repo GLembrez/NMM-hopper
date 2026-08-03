@@ -21,7 +21,7 @@ class ContinuationSolver:
         self.traj_apex_TD = self.opti.variable(6, N_F)
         self.traj_TD_LO = self.opti.variable(4, N_S)
         self.traj_LO_apex = self.opti.variable(6, N_F)
-        self.xi = self.opti.variable(2)
+        self.xi = self.opti.variable()
 
         self.Ed = self.opti.parameter()
 
@@ -44,7 +44,7 @@ class ContinuationSolver:
             # stance dn constraint
             self.opti.subject_to(
                 self.traj_TD_LO[:, i + 1]
-                == dn.RK4s(self.traj_TD_LO[:, i], self.dt[1], self.xi[1])
+                == dn.RK4s(self.traj_TD_LO[:, i], self.dt[1], self.xi[0])
             )
 
         # touch-down
@@ -57,7 +57,7 @@ class ContinuationSolver:
 
         # lift-off
         self.opti.subject_to(
-            dn.stance_to_flight(self.traj_TD_LO[:, - 1])[[1,2,3,4,5], 0] == self.traj_LO_apex[[1,2,3,4,5], 0]
+            dn.stance_to_flight(self.traj_TD_LO[:, - 1])[1:, 0] == self.traj_LO_apex[1:, 0]
         )
         self.opti.subject_to(
             self.traj_TD_LO[0, - 1] ** 2 + self.traj_TD_LO[1, - 1] ** 2 == 1
@@ -81,7 +81,7 @@ class ContinuationSolver:
         self.opti.set_initial(self.traj_TD_LO, dn.flight_to_stance(traj[:,N_F:N_F+N_S]))
         self.opti.set_initial(self.traj_LO_apex, traj[:,N_F+N_S:2*N_F+N_S])
         self.opti.set_initial(self.dt, dt)
-        self.opti.set_initial(self.xi, [0.0, 0.0])
+        self.opti.set_initial(self.xi, 0.0)
         self.opti.set_value(self.Ed, Ed)
 
     def solve(self):

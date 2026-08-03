@@ -1,7 +1,8 @@
 import casadi as cs
 import dynamics
 
-N_NEWTON = 10
+N_NEWTON = 3
+STEP_SIZE = 1
 
 x_init = cs.SX.sym("x_init", 6)
 t = cs.SX.sym("t", 3)
@@ -41,18 +42,19 @@ J_root = cs.jacobian(root, z)
 J_ext = cs.jacobian(root, u)
 J_root_rev = cs.jacobian(root_rev, z)
 J_ext_rev = cs.jacobian(root_rev, u)
-z_newton = z - cs.inv(J_root) @ root
+z_newton = z - STEP_SIZE*cs.inv(J_root) @ root
 z_newton_rev = z - cs.inv(J_root_rev) @ root_rev
 
 b = du1.T @ cs.jtimes(J_ext, u, du2).T @ phi
 
 newton_step = cs.Function("newton_step", [z, E], [z_newton])
 newton_step_rev = cs.Function("newton_step_rev", [z, E], [z_newton_rev])
-compute_J = cs.Function("compute_J", [u], [J_ext])
-compute_J_rev = cs.Function("compute_J_rev", [u], [J_ext_rev])
-residual = cs.Function("residual", [u], [root])
-residual_rev = cs.Function("residual_rev", [u], [root_rev])
-hessian = cs.Function("Hessian", [u, du1, du2, phi], [b])
-
 newton = newton_step.fold(N_NEWTON)
 newton_rev = newton_step_rev.fold(N_NEWTON)
+residual = cs.Function("residual", [u], [root])
+residual_rev = cs.Function("residual_rev", [u], [root_rev])
+compute_J = cs.Function("compute_J", [u], [J_ext])
+compute_J_rev = cs.Function("compute_J_rev", [u], [J_ext_rev])
+hessian = cs.Function("Hessian", [u, du1, du2, phi], [b])
+
+
