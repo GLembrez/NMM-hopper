@@ -83,9 +83,15 @@ args_plotting = (stance_to_flight,flight_to_stance,traj_f_list,traj_s_list)
 fig = plt.figure(figsize=(10,10))
 ax = fig.add_subplot(1,1,1,projection="3d")
 ax.set_proj_type('ortho')
-ax.plot([0.,3.],[0,0],[0,0],'k--')
+# ax.plot([0.,3.],[0,0],[0,0],'k--')
 for M in connected_component:
-    plotting.plot_generator(ax,M,'red',2,STEP_SIZE,args_plotting,False,5)
+# M = connected_component[-1]
+# print(M[0][1])
+    # plotting.plot_generator(ax,M,'red',2,STEP_SIZE,args_plotting,False,5)
+    traj = np.array(M)
+# if np.abs(M[-1][3]) > 0.2:
+    ax.plot(traj[:,1],traj[:,2],traj[:,3])
+    # plotting.plot_generator(ax,M,'red',2,STEP_SIZE,args_plotting,False,1)
 # ax.set_xlim(0,3) 
 # ax.set_ylim(-0.5,0.5)
 # ax.set_zlim(-2,2)

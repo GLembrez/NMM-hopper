@@ -23,12 +23,13 @@ def plot_generator(ax,branch,c,lw,STEP_SIZE,dynamics_function,plot_indiv=False,s
     for i in range(traj.shape[0] -1):
         if np.linalg.norm(traj[i+1,:] - traj[i,:]) > 2*STEP_SIZE:
             idx = i
+    print(idx)
     if traj[-1,3] > 0.2:
-        ax.plot(traj[:idx,1],traj[:idx,2],traj[:idx,3],linewidth = lw, color = c)
-        ax.plot(traj[idx+1:,1],traj[idx+1:,2],traj[idx+1:,3],linewidth = lw, color = c)
+        ax.plot(traj[:idx+1,1],traj[:idx+1,2],traj[:idx+1,3],linewidth = lw, color = c)
+        ax.plot(traj[idx+1:,1],traj[idx+1:,2],traj[idx+1:,3],linewidth = lw, color = 'b')
     elif traj[-1,3] < -0.2:
         ax.plot(traj[:idx,1],-traj[:idx,2],-traj[:idx,3],linewidth = lw, color = c)
-        ax.plot(traj[idx+1:,1],-traj[idx+1:,2],-traj[idx+1:,3],linewidth = lw, color = c)
+        ax.plot(traj[idx+1:,1],-traj[idx+1:,2],-traj[idx+1:,3],linewidth = lw, color = 'b')
 
     if plot_indiv:
         for i in range(0,traj.shape[0],skip):

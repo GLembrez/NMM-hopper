@@ -60,7 +60,7 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
         if u[1] <= 1.01 and np.abs(u[3]) <= 1e-6: 
             print("infeasible")
             IP.append(deepcopy(M[-1]))
-        elif step >= 2 and (p_stored.T @ p) < 0:
+        elif step > 2 and (p_stored.T @ p) < 0:
             print("bifurcation")
             coeff = det_stored / (det_stored + np.abs(det))
             u_star = coeff * M[-1] + (1-coeff) * M[-2]
@@ -71,6 +71,8 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
         elif step>2 and np.linalg.det(compute_Jz(u[:10],u[10]))*np.linalg.det(compute_Jz(M[-1][:10],M[-1][10])) < 0:
             print("turning point")
             TP.append((u,p))
+        elif step==N_STEPS-1:
+            print("max branch depth")
         else:
             isSpecialPoint = False 
 
