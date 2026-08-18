@@ -47,8 +47,11 @@ def build_casadi_functions(dynamics_functions, PERIODIC):
     compute_Jz = cs.Function("compute_Jz",[z,E],[J_root])
     residual = cs.Function("residual", [u], [root])
     hessian = cs.Function("Hessian", [u, du1, du2, phi], [b])
+    newton_step = cs.Function("newton_step",[z,E],[z_newton])
 
-    return compute_J,compute_Jz, residual, hessian
+    newton = newton_step.fold(10)
+
+    return compute_J,compute_Jz, residual, hessian,newton
 
 
 

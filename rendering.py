@@ -35,7 +35,7 @@ args_dynamics = (W, K, N_F, N_S)
     traj_s_list,
 ) = dynamics.build_casadi_functions(args_dynamics)
 args_continuation = (stance_to_flight, flight_to_stance, traj_f, traj_s, energy_flight)
-compute_J, compute_Jz, residual, hessian = continuation.build_casadi_functions(
+compute_J, compute_Jz, residual, hessian,newton = continuation.build_casadi_functions(
     args_continuation, PERIODIC
 )
 continuation_functions = (compute_J, compute_Jz, hessian)
@@ -47,10 +47,10 @@ args_plotting = (stance_to_flight,flight_to_stance,traj_f_list,traj_s_list)
 fig = plt.figure(figsize=(10,10))
 ax = fig.add_subplot(1,1,1,projection="3d")
 ax.set_proj_type('ortho')
-# for M in data_switch:
-#     plotting.plot_generator(ax,M,'red',2,STEP_SIZE,args_plotting,True,40,1)
+for M in data_switch:
+    plotting.plot_generator(ax,M,'red',2,STEP_SIZE,args_plotting,False,40,1)
 for M in data_locomotion:
-    plotting.plot_generator(ax,M,'blue',2,STEP_SIZE,args_plotting,True,400,1)
+    plotting.plot_generator(ax,M,'blue',2,STEP_SIZE,args_plotting,False,400,1)
     # plotting.plot_generator(ax,M,'blue',2,STEP_SIZE,args_plotting,False,1,-1)
 x_min,x_max = ax.get_xlim()
 # ax.plot([0.,x_max],[0,0],[0,0],'k--')

@@ -30,7 +30,7 @@ def process_bifurcation(u, p1, hessian, compute_J):
 
 def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
 
-    compute_J,compute_Jz, hessian = continuation_functions
+    compute_J,compute_Jz,residual, hessian,newton = continuation_functions
 
     M,BP,TP,IP = [],[],[],[]
     p_stored = None
@@ -49,17 +49,26 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
         if det < 0:
             # set p to the forward direction
             p = - p
+
         u += d * STEP_SIZE * p.reshape((11,))
 
-        # corrector step
-        solver.initialize(u)
-        u = solver.solve()
-        
+        err_newton = np.linalg.norm(residual(cs.vertcat(newton(u[:10],u[10]),u[10])))
+        err = np.linalg.norm(residual(u))
+        if err_newton<err:
+            # corrector step
+            solver.initialize(u)
+            u = solver.solve()    
+
 
         isSpecialPoint = True
-        if u[1] <= 1.01 and np.abs(u[3]) <= 1e-6: 
-            print("infeasible")
+        if (u[1] <= 1.01 and np.abs(u[3]) <= 1e-6) or err_newton > err:  
+            print("infeasible at step {}".format(step))
             IP.append(deepcopy(M[-1]))
+        elif step > 2 and np.linalg.norm(M[-1]-u) > 100 * STEP_SIZE:
+            u = M[-1].copy()
+            print("jump at step {}".format(step))
+            IP.append(deepcopy(M[-1]))
+
         elif step > 2 and (p_stored.T @ p) < 0:
             print("bifurcation")
             coeff = det_stored / (det_stored + np.abs(det))

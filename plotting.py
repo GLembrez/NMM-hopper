@@ -1,6 +1,8 @@
 import casadi as cs
 import numpy as np
 
+IDX = [1,5,3]
+
 def u2traj(dynamics_function,u):
     stance_to_flight,flight_to_stance,traj_f_list,traj_s_list = dynamics_function
     x0,dt,xi = u[:6],u[6:9],u[9]
@@ -25,11 +27,11 @@ def plot_generator(ax,branch,c,lw,STEP_SIZE,dynamics_function,plot_indiv=False,s
             idx = i
 
     if traj[-1,3] > 1e-2 or traj[0,3] > 1e-2:
-        ax.plot(traj[:idx+1,1],d*traj[:idx+1,2],d*traj[:idx+1,3],linewidth = lw, color = c)
-        ax.plot(traj[idx+1:,1],d*traj[idx+1:,2],d*traj[idx+1:,3],linewidth = lw, color = c)
+        ax.plot(traj[:idx+1,IDX[0]],d*traj[:idx+1,IDX[1]],d*traj[:idx+1,IDX[2]],linewidth = lw, color = c)
+        ax.plot(traj[idx+1:,IDX[0]],d*traj[idx+1:,IDX[1]],d*traj[idx+1:,IDX[2]],linewidth = lw, color = c)
     elif traj[-1,3] < -1e-2 or traj[0,3] < -1e-2:
-        ax.plot(traj[:idx,1],-d*traj[:idx,2],-d*traj[:idx,3],linewidth = lw, color = c)
-        ax.plot(traj[idx+1:,1],-d*traj[idx+1:,2],-d*traj[idx+1:,3],linewidth = lw, color = c)
+        ax.plot(traj[:idx,IDX[0]],-d*traj[:idx,IDX[1]],-d*traj[:idx,IDX[2]],linewidth = lw, color = c)
+        ax.plot(traj[idx+1:,IDX[0]],-d*traj[idx+1:,IDX[1]],-d*traj[idx+1:,IDX[2]],linewidth = lw, color = c)
 
     if plot_indiv:
         for i in range(0,traj.shape[0],skip):

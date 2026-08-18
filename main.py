@@ -14,8 +14,8 @@ N_F = 25
 N_S = 50
 K = 40
 W = cs.sqrt(10)
-N_BRANCH = 3
-N_STEPS = 40000
+N_BRANCH = 5
+N_STEPS = 50000
 N_NEWTON = 10
 STEP_SIZE = 0.01
 EPSILON = 0.05
@@ -36,10 +36,10 @@ args_dynamics = (W, K, N_F, N_S)
     traj_s_list,
 ) = dynamics.build_casadi_functions(args_dynamics)
 args_continuation = (stance_to_flight, flight_to_stance, traj_f, traj_s, energy_flight)
-compute_J, compute_Jz, residual, hessian = continuation.build_casadi_functions(
+compute_J, compute_Jz, residual, hessian,newton = continuation.build_casadi_functions(
     args_continuation, PERIODIC
 )
-continuation_functions = (compute_J, compute_Jz, hessian)
+continuation_functions = (compute_J, compute_Jz,residual, hessian,newton)
 
 solver = Continuation_Solver(residual)
 
@@ -50,6 +50,9 @@ to_explore = deque([U0])
 explored = []
 connected_component = []
 idx_branch = 0
+
+from time import time
+
 
 while to_explore and idx_branch < N_BRANCH: 
     print(idx_branch)
