@@ -51,7 +51,6 @@ explored = []
 connected_component = []
 idx_branch = 0
 
-from time import time
 
 while to_explore and idx_branch < N_BRANCH: 
     print(idx_branch)

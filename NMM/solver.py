@@ -10,7 +10,6 @@ class Continuation_Solver:
         self.N_S = 50               # number of stance samples
         self.K = K                  # dimensionless stiffness
         self.W = W                  # dimensionless swing frequency
-        self.N_BRANCH = 5           # maximum number of branches to explore
         self.N_STEPS = 50000        # maximum number of steps along a branch
         self.N_NEWTON = 10          # number of newton steps
         self.STEP_SIZE = 0.01       # step size along a branch
@@ -25,7 +24,7 @@ class Continuation_Solver:
 
         self.build_dynamics()
         self.build_continuation()
-        self.buil_constraint()
+        self.build_constraint()
 
     def build_dynamics(self):
         dynamics.build(self)
