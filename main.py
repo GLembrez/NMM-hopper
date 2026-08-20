@@ -1,7 +1,8 @@
 import casadi as cs
 import numpy as np
-from solver import Continuation_Solver
-import BFS 
+from NMM.solver import Continuation_Solver
+from MPC.solver import MPCSolver
+import NMM.BFS as BFS
 
 u0 = np.array([
     0.0,        # px
