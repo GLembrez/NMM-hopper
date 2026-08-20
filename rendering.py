@@ -40,7 +40,7 @@ compute_J, compute_Jz, residual, hessian,newton = continuation.build_casadi_func
 )
 continuation_functions = (compute_J, compute_Jz, hessian)
 
-data_locomotion = pickle.load(open('data_locomotion.pkl', 'rb'))
+data_locomotion = pickle.load(open('data_test.pkl', 'rb'))
 data_switch = pickle.load(open('data_switch.pkl', 'rb'))
 
 args_plotting = (stance_to_flight,flight_to_stance,traj_f_list,traj_s_list)

@@ -3,7 +3,7 @@ import numpy as np
 from collections import deque
 from solver import Continuation_Solver
 import pickle
-import generator
+import generator_backup as generator
 import continuation
 import dynamics
 import plotting
@@ -53,7 +53,6 @@ idx_branch = 0
 
 from time import time
 
-
 while to_explore and idx_branch < N_BRANCH: 
     print(idx_branch)
     u_star = to_explore.popleft()
@@ -82,4 +81,4 @@ while to_explore and idx_branch < N_BRANCH:
     connected_component.append(M)
     idx_branch += 1
 
-pickle.dump(connected_component,open('data_locomotion.pkl', 'wb'))
+pickle.dump(connected_component,open('data_test.pkl', 'wb'))

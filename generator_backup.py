@@ -36,8 +36,8 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
     p_stored = None
     det_stored = None
     u = u0.copy()
-    M.append(u0)
     h = STEP_SIZE
+    M.append(u0)
     d = 1
     step = 0
 
@@ -51,25 +51,30 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
             # set p to the forward direction
             p = - p
 
-        u_est = u +  d * h * p.reshape((11,))
-        err_newton = np.linalg.norm(residual(cs.vertcat(newton(u_est[:10],u_est[10]),u_est[10])))
-        err = np.linalg.norm(residual(u_est))
-        while step > 2 and err_newton > err and h  > 1e-3 : 
-            h = h / 2
-            u_est = u +  d * h * p.reshape((11,))
+        # u += d * h * p.reshape((11,))
+        diverging = True
+        while diverging and h>1e-3:
+            # print(step,h)
+            u_est = deepcopy(u) + d*h*p.reshape((11,))
             err_newton = np.linalg.norm(residual(cs.vertcat(newton(u_est[:10],u_est[10]),u_est[10])))
             err = np.linalg.norm(residual(u_est))
-        if err_newton<err:
+            if err_newton<err:
+                diverging = False
+                break
+            h = h/2
+        u += d * h * p.reshape((11,))
+        if not diverging:
             # corrector step
-            solver.initialize(u_est)
-            u = solver.solve()    
+            solver.initialize(u)
+            u = solver.solve()  
+            h = STEP_SIZE
 
 
         isSpecialPoint = True
-        if (u[1] <= 1.01 and np.abs(u[3]) <= 1e-6):  
+        if (u[1] <= 1.01 and np.abs(u[3]) <= 1e-6) :  
             print("unfeasable at step {}".format(step))
             IP.append(deepcopy(M[-1]))
-        elif step > 2 and h < 1e-3:
+        elif step > 2 and h<1e-3:
             print("diverging newton at step {}".format(step))
             IP.append(deepcopy(M[-1]))
         elif step > 2 and np.linalg.norm(M[-1]-u) > 100 * h:
@@ -78,7 +83,7 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
             IP.append(deepcopy(M[-1]))
 
         elif step > 2 and (p_stored.T @ p) < 0:
-            print("bifurcation at step {}".format(step))
+            print("bifurcation")
             coeff = det_stored / (det_stored + np.abs(det))
             u_star = coeff * M[-1] + (1-coeff) * M[-2]
             p1 = coeff * p - (1-coeff) * p_stored
@@ -86,11 +91,10 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
             p2 = process_bifurcation(u_star, p1, hessian,compute_J)
             BP.append((u_star,(M[-2] - M[-1])/np.linalg.norm(M[-2] - M[-1]),p2))
         elif step>2 and np.linalg.det(compute_Jz(u[:10],u[10]))*np.linalg.det(compute_Jz(M[-1][:10],M[-1][10])) < 0:
-            print("turning point at step {}".format(step))
-            print(u)
+            print("turning point")
             TP.append((u,p))
         elif step==N_STEPS-1:
-            print("max branch depth at step {}".format(step))
+            print("max branch depth")
         else:
             isSpecialPoint = False 
 
@@ -104,7 +108,6 @@ def compute_generator(solver,u0,STEP_SIZE,N_STEPS,continuation_functions):
                 step = 0
                 d=-1
                 u = u0.copy()
-                h = STEP_SIZE
             else:
                 break
 
