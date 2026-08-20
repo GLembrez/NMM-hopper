@@ -20,3 +20,4 @@ u0 = np.array([
 
 solver = Continuation_Solver(40,cs.sqrt(10),False)
 NMM_locomotion = BFS.search(u0,solver,3)
+
