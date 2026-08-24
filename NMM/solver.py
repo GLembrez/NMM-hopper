@@ -1,6 +1,6 @@
 import casadi as cs
-import dynamics
-import continuation 
+import NMM.dynamics as dynamics
+import NMM.continuation as continuation 
 
 class Continuation_Solver:
 

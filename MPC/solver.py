@@ -1,5 +1,5 @@
 import casadi as cs
-import actuated_dynamics
+import MPC.actuated_dynamics as dynamics
 
 
 class MPCSolver:
@@ -21,9 +21,11 @@ class MPCSolver:
         self.xf = self.opti.variable(6, self.N)
         self.dt = self.opti.variable(2)
         self.u = self.opti.variable(2, N)
+        self.v = self.opti.variable(2,N)
 
         self.register_LUT(LUT_list)
         self.build_dynamics()
+        self.constraints()
 
     def register_LUT(self, LUT_lists):
         self.LUT_x = LUT_lists[0]
@@ -32,17 +34,17 @@ class MPCSolver:
         self.LUT_dy = LUT_lists[3]
 
     def build_dynamics(self):
-        actuated_dynamics.build(self)
+        dynamics.build(self)
 
     def constraints(self):
         J = 0
         for i in range(self.N - 1):
             # dynamics constraint
             self.opti.subject_to(
-                self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.u[0, i], self.dt[0])
+                self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.u[0, i]+self.v[0,i], self.dt[0])
             )
             self.opti.subject_to(
-                self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.u[1, i], self.dt[1])
+                self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.u[1, i]+self.v[1,i], self.dt[1])
             )
             J += self.u[:, i].T @ self.R @ self.u[:, i]
 
@@ -51,9 +53,9 @@ class MPCSolver:
 
         # lift-off
         self.opti.subject_to(self.xs[0, -1] ** 2 + self.xs[1, -1] ** 2 == 1)
-        self.opti.subject_to(
-            self.xf[1:, 0] == self.stance_to_flight(self.xs[:, -1])[1:]
-        )
+        self.opti.subject_to(self.xf[[0,1,3,4], 0] == self.xs[:, -1])
+        self.opti.subject_to(self.xf[2,0] == cs.atan(-self.xs[0,-1]/self.xs[1,-1]))
+        self.opti.subject_to(self.xf[5,0] == self.xs[0]*self.xs[3] - self.xs[1]*self.xs[2])
 
         # terminal constraint
         self.opti.subject_to(cs.cos(self.xf[2, -1]) == self.xf[1, -1])
@@ -62,12 +64,14 @@ class MPCSolver:
         )
         E_TD = 0.5 * (x_TD[2] ** 2 + x_TD[3] ** 2) + x_TD[1]
         gamma = cs.vertcat(
-            self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_xd(E_TD), self.LUT_yd(E_TD)
+            self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
         )
-        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) < 1e-3)
+        # self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1)
 
-        # running cost
+        # # running cost
         self.opti.minimize(J)
+        self.opti.subject_to(cs.vec(self.v) <= 0.1)
+        self.opti.subject_to(cs.vec(self.v) >= -0.1)
 
     def initialize(self, x0, xs, xf, dt):
         self.opti.set_value(self.x0, x0)
@@ -79,8 +83,8 @@ class MPCSolver:
     def solve(self):
         self.opti.solve()
         return (
-            self.opti.value(self.xf),
             self.opti.value(self.xs),
+            self.opti.value(self.xf),
             self.opti.value(self.dt),
-            self.opti.value(self.u)
+            self.opti.value(self.v)
         )

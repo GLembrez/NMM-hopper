@@ -1,6 +1,6 @@
 import casadi as cs
 import numpy as np
-import generator
+import NMM.generator as generator
 from collections import deque
 
 def search(u0,solver,N_BRANCH):
