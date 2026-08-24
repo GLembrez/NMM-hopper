@@ -4,15 +4,15 @@ import NMM.continuation as continuation
 
 class Continuation_Solver:
 
-    def __init__(self, K, W, PERIODIC):
+    def __init__(self, K, W, N=1000, H=0.01, PERIODIC=True):
 
         self.N_F = 25               # number of flight samples
         self.N_S = 50               # number of stance samples
         self.K = K                  # dimensionless stiffness
         self.W = W                  # dimensionless swing frequency
-        self.N_STEPS = 50000        # maximum number of steps along a branch
+        self.N_STEPS = N            # maximum number of steps along a branch
         self.N_NEWTON = 10          # number of newton steps
-        self.STEP_SIZE = 0.01       # step size along a branch
+        self.STEP_SIZE = H          # step size along a branch
         self.EPSILON = 0.05         # minimal distance between special points
         self.PERIODIC = PERIODIC    # toggles antiperiodic steps
 

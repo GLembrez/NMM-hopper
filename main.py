@@ -3,6 +3,7 @@ import numpy as np
 from NMM.solver import Continuation_Solver
 from MPC.solver import MPCSolver
 import NMM.BFS as BFS
+import pickle
 
 u0 = np.array([
     0.0,        # px
@@ -18,6 +19,13 @@ u0 = np.array([
     1.01        # energy
 ])
 
-solver = Continuation_Solver(40,cs.sqrt(10),False)
-NMM_locomotion = BFS.search(u0,solver,3)
+solver_locomotion = Continuation_Solver(40,1,1000,0.01,True)
+solver_switch = Continuation_Solver(40,1,1000,0.01,False)
+NMM_locomotion = BFS.search(u0,solver_locomotion,5)
+NMM_switch = BFS.search(u0,solver_switch,3)
+
+with open("data/locomotion.pkl", "wb") as file:
+    pickle.dump(NMM_locomotion, file)
+with open("data/switch.pkl", "wb") as file:
+    pickle.dump(NMM_switch, file)
 
