@@ -21,7 +21,6 @@ class MPCSolver:
         self.xf = self.opti.variable(6, self.N)
         self.dt = self.opti.variable(2)
         self.u = self.opti.variable(2, N)
-        self.v = self.opti.variable(2,N)
 
         self.register_LUT(LUT_list)
         self.build_dynamics()
@@ -41,10 +40,10 @@ class MPCSolver:
         for i in range(self.N - 1):
             # dynamics constraint
             self.opti.subject_to(
-                self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.u[0, i]+self.v[0,i], self.dt[0])
+                self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.dt[0], self.u[0, i])
             )
             self.opti.subject_to(
-                self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.u[1, i]+self.v[1,i], self.dt[1])
+                self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.dt[1], self.u[1, i])
             )
             J += self.u[:, i].T @ self.R @ self.u[:, i]
 
@@ -66,12 +65,12 @@ class MPCSolver:
         gamma = cs.vertcat(
             self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
         )
-        # self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1)
+        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
 
         # # running cost
         self.opti.minimize(J)
-        self.opti.subject_to(cs.vec(self.v) <= 0.1)
-        self.opti.subject_to(cs.vec(self.v) >= -0.1)
+        self.opti.subject_to(self.dt>0)
+        self.opti.subject_to(self.dt<5)
 
     def initialize(self, x0, xs, xf, dt):
         self.opti.set_value(self.x0, x0)
@@ -86,5 +85,5 @@ class MPCSolver:
             self.opti.value(self.xs),
             self.opti.value(self.xf),
             self.opti.value(self.dt),
-            self.opti.value(self.v)
+            self.opti.value(self.u),
         )

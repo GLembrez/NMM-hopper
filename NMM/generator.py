@@ -88,9 +88,9 @@ def compute(solver,u0):
             p1 = p1/np.linalg.norm(p1)
             p2 = process_bifurcation(u_star, p1, solver)
             BP.append((u_star,(M[-2] - M[-1])/np.linalg.norm(M[-2] - M[-1]),p2))
-        elif step>2 and np.linalg.det(solver.compute_Jz(u[:10],u[10]))*np.linalg.det(solver.compute_Jz(M[-1][:10],M[-1][10])) < 0:
-            print("turning point at step {}".format(step))
-            TP.append((u,p))
+        # elif step>2 and np.linalg.det(solver.compute_Jz(u[:10],u[10]))*np.linalg.det(solver.compute_Jz(M[-1][:10],M[-1][10])) < 0:
+        #     print("turning point at step {}".format(step))
+        #     TP.append((u,p))
         elif step==solver.N_STEPS-1:
             print("max branch depth reached")
         else:
