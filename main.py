@@ -26,8 +26,8 @@ solver_switch = Continuation_Solver(40,cs.sqrt(10),100000,0.01,False)
 NMM_locomotion = BFS.search(u0,solver_locomotion,16)
 NMM_switch = BFS.search(u0,solver_switch,10)
 
-with open("data/data_locomotion.pkl", "wb") as file:
-    pickle.dump(NMM_locomotion, file)
-with open("data/data_switch.pkl", "wb") as file:
-    pickle.dump(NMM_switch, file)
+# with open("data/data_locomotion.pkl", "wb") as file:
+#     pickle.dump(NMM_locomotion, file)
+# with open("data/data_switch.pkl", "wb") as file:
+#     pickle.dump(NMM_switch, file)
 
