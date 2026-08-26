@@ -3,11 +3,7 @@ import numpy as np
 from copy import deepcopy
 from scipy.linalg import null_space
 
-def find_regular_point(BP):
-    u_star, p1, p2 = BP
-    u1 = u_star + 0.05 * p1.reshape((11,))
-    u2 = u_star + 0.05 * p2.reshape((11,))
-    return u1,u2 
+
 
 def process_bifurcation(u, p1, solver):
 
@@ -26,24 +22,20 @@ def process_bifurcation(u, p1, solver):
     p2 = p2 / np.linalg.norm(p2)
     return np.array(p2)
 
-def check_diverging_newton(solver,u,d,h,p):
-    diverging = True
-    while diverging and h>1e-3:
-        u_est = deepcopy(u) + d*h*p.reshape((11,))
-        u_est_newton = cs.vertcat(solver.newton(u_est[:10],u_est[10]),u_est[10])
-        err_newton = np.linalg.norm(solver.residual(u_est_newton))
-        err = np.linalg.norm(solver.residual(u_est))
-        if err_newton<err:
-            diverging = False
-            break
-        h = h/2
-    return diverging,h
+def check_impossible(step,u,failed,M,h):
+    physics = (u[1] <= 1.01 and np.abs(u[3]) <= 1e-6)
+    jump = (step > 2 and np.linalg.norm(M[-1]-u) > 10 * h)
+    if physics or jump:
+        return True
+    return failed
+
 
 def compute(solver,u0):
 
     M,BP,TP,IP = [],[],[],[]
     p_stored = None
     det_stored = None
+    detz_stored = None
     u = u0.copy()
     h = solver.STEP_SIZE
     M.append(u0)
@@ -56,29 +48,25 @@ def compute(solver,u0):
         J = solver.compute_J(u)
         p = null_space(J)
         det = np.linalg.det(cs.vertcat(J,p.T))
+        detz = np.linalg.det(solver.compute_Jz(u[:10],u[10]))
         if det < 0:
             # set p to the forward direction
             p = - p
 
         # corrector step
-        diverging,h = check_diverging_newton(solver,u,d,h,p)
+        solverFailed = False
         u += d * h * p.reshape((11,))
-        if not diverging:
-            solver.initialize(u)
+        solver.initialize(u)
+        try:
             u = solver.solve()  
-            h = solver.STEP_SIZE
+        except:
+            solverFailed = True
 
         # handle the crossing of special points
         isSpecialPoint = True 
-        if (u[1] <= 1.01 and np.abs(u[3]) <= 1e-6) :  
-            print("unfeasable at step {}".format(step))
-            IP.append(deepcopy(M[-1]))
-        elif step > 2 and h<1e-3:
-            print("diverging newton at step {}".format(step))
-            IP.append(deepcopy(M[-1]))
-        elif step > 2 and np.linalg.norm(M[-1]-u) > 100 * h:
+        if  check_impossible(step,u,solverFailed,M,h):
             u = M[-1].copy()
-            print("jump at step {}".format(step))
+            print("impossible at step {}".format(step))
             IP.append(deepcopy(M[-1]))
         elif step > 2 and (p_stored.T @ p) < 0:
             print("bifurcation at step {}".format(step))
@@ -87,19 +75,24 @@ def compute(solver,u0):
             p1 = coeff * p - (1-coeff) * p_stored
             p1 = p1/np.linalg.norm(p1)
             p2 = process_bifurcation(u_star, p1, solver)
-            BP.append((u_star,(M[-2] - M[-1])/np.linalg.norm(M[-2] - M[-1]),p2))
-        elif step>2 and np.linalg.det(solver.compute_Jz(u[:10],u[10]))*np.linalg.det(solver.compute_Jz(M[-1][:10],M[-1][10])) < 0:
-            print("turning point at step {}".format(step))
-            TP.append((u,p))
+            BP.append((u_star,-(M[-2] - M[-1])/np.linalg.norm(M[-2] - M[-1]),p2))
+        # elif step>2 and detz*detz_stored < 0:
+        #     print("turning point at step {}".format(step))
+        #     coeff = np.abs(det_stored / (det_stored - det))
+        #     u_star = coeff * u + (1-coeff) * M[-1] 
+        #     # p1 = coeff * p + (1-coeff) * p_stored
+        #     TP.append((u_star,p))
         elif step==solver.N_STEPS-1:
             print("max branch depth reached")
         else:
             isSpecialPoint = False 
 
         step += 1
-        M.append(u)
+        M.append(deepcopy(u))
         p_stored = p.copy()
         det_stored = np.abs(det)
+        detz_stored = detz.copy()
+
 
         if isSpecialPoint:
             if d==1:
