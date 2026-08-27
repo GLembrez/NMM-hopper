@@ -20,14 +20,18 @@ u0 = np.array([
 ])
 
 # u0 = np.array([ 0., 2.438015, -0.000005, -0.727379,  0., 0.686422,  0.068171, 0.010264, 0.068171,  0., 2.702533])
+w_list = [3,2.5,2,1.5,1,0.5]
+i = 0
+for w in w_list:
+    solver_locomotion = Continuation_Solver(40,w,100000,0.01,True)
+    solver_switch = Continuation_Solver(40,w,100000,0.01,False)
+    NMM_locomotion = BFS.search(u0,solver_locomotion,5)
+    NMM_switch = BFS.search(u0,solver_switch,3)
 
-solver_locomotion = Continuation_Solver(40,cs.sqrt(10),100000,0.01,True)
-solver_switch = Continuation_Solver(40,cs.sqrt(10),100000,0.01,False)
-NMM_locomotion = BFS.search(u0,solver_locomotion,16)
-NMM_switch = BFS.search(u0,solver_switch,10)
+    with open("data/locomotion{}.pkl".format(i), "wb") as file:
+        pickle.dump(NMM_locomotion, file)
+    with open("data/switch{}.pkl".format(i), "wb") as file:
+        pickle.dump(NMM_switch, file)
 
-# with open("data/data_locomotion.pkl", "wb") as file:
-#     pickle.dump(NMM_locomotion, file)
-# with open("data/data_switch.pkl", "wb") as file:
-#     pickle.dump(NMM_switch, file)
+    i += 1
 
