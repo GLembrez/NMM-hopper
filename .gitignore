@@ -15,10 +15,13 @@ __pycache__
 
 
 # text data
-/code/data/*.csv
 *.npy
 *.text
 *.casadi
 *.pkl
 
 tempCodeRunnerFile.py
+
+
+# video data
+/output/*.mp4
