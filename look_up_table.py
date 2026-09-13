@@ -4,9 +4,10 @@ import pickle
 from matplotlib import pyplot as plt
 from NMM.solver import Continuation_Solver
 from MPC.solver import MPCSolver
+from MPC.baseline import BaselineSolver
 
 N_SAMPLES = 100
-R = cs.DM([[1,0],[0,1]])
+R = cs.DM([[1,0],[0,10]])
 NMM_solver = Continuation_Solver(40,1,True)
 
 def get_touch_down(solver,u):
@@ -55,6 +56,31 @@ data_switch = pickle.load(open('data/switch4.pkl','rb'))
 NMM_locomotion = np.array(data_locomotion[2])
 NMM_switch = np.array(data_switch[2])
 
+
+########## BASELINE SOLVER ######################
+NMM_baseline = NMM_locomotion.copy()
+inf = 1
+while inf<NMM_baseline.shape[0]-1 and NMM_baseline[inf+1,-1]<NMM_baseline[inf,-1]:
+    inf += 1
+sup = inf 
+while sup<NMM_baseline.shape[0]-1 and NMM_baseline[sup+1,-1]>NMM_baseline[sup,-1]:
+    sup += 1
+NMM_baseline[:,[0,2,3,5]] = - NMM_baseline[:,[0,2,3,5]]
+NMM_cropped = NMM_baseline[inf:sup,:].copy()
+skip = max(1,int(NMM_cropped.shape[0]/N_SAMPLES))
+NMM_sampled = NMM_cropped[::skip,:]
+NMM_touch_down = []
+for i in range(NMM_sampled.shape[0]):
+    NMM_touch_down.append(get_touch_down(NMM_solver,NMM_sampled[i,:]))
+NMM_touch_down = np.array(NMM_touch_down).reshape((NMM_sampled.shape[0],-1))
+LUT_x = cs.interpolant('LUTx','bspline',[NMM_sampled[:,-1]],-np.sin(NMM_touch_down[:,2]))
+LUT_y = cs.interpolant('LUTy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,1])
+LUT_dx = cs.interpolant('LUTdx','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,3])
+LUT_dy = cs.interpolant('LUTdy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,4])
+LUT_list = [LUT_x,LUT_y,LUT_dx,LUT_dy]
+baseline_solver = BaselineSolver(40,1,50,R,LUT_list)
+########## BASELINE SOLVER ######################
+
 solver_R = build_solver(NMM_locomotion,100,R,False)
 solver_L = build_solver(NMM_locomotion,100,R,True)
 solver_RL = build_solver(NMM_switch,100,R,False)
@@ -96,6 +122,12 @@ xs_star1,xf_star1,dt_star1,cmd1 = solver_L.solve()
 traj_next = NMM_solver.traj_s_list(NMM_solver.flight_to_stance(xf_star1[:,-1]),dt_star1[0],0)
 traj_next[0,:] += xf_star[0,-1] - traj_next[0,0]
 
+full_traj_s = cs.horzcat(xs1,xs2)
+full_traj_f = cs.horzcat(xf1,xf2)
+full_traj_dt = cs.vertcat(dt1,dt2)
+baseline_solver.initialize(x01,full_traj_s,full_traj_f,full_traj_dt,cs.horzcat(cmd,cmd1))
+full_s,full_f,full_dt,full_cmd = baseline_solver.solve()
+
 fig = plt.figure()
 # plt.plot(NMM[:,1],NMM[:,3])
 # plt.plot(NMM_sampled[:,1],NMM_sampled[:,3])
@@ -104,12 +136,17 @@ fig = plt.figure()
 # plt.plot(xf1[0,:],xf1[1,:],'teal')
 # plt.plot(xs2[0,:],xs2[1,:],'blue')
 # plt.plot(xf2[0,:],xf2[1,:],'blue')
-plt.plot(xs_star[0,:],xs_star[1,:],'red')
-plt.plot(xf_star[0,:],xf_star[1,:],'red')
-plt.plot(xs_star1[0,:],xs_star1[1,:],'green')
-plt.plot(xf_star1[0,:],xf_star1[1,:],'green')
+# plt.plot(xs_star[0,:],xs_star[1,:],'red')
+# plt.plot(xf_star[0,:],xf_star[1,:],'red')
+# plt.plot(xs_star1[0,:],xs_star1[1,:],'green')
+# plt.plot(xf_star1[0,:],xf_star1[1,:],'green')
+# plt.plot(full_s[0,:],full_s[1,:],'blue')
+# plt.plot(full_f[0,:],full_f[1,:],'blue')
 # plt.plot(traj_star[0,:],traj_star[1,:])
 # plt.plot(traj_switch[0,:],traj_switch[1,:])
-plt.plot(traj_next[0,:].T,traj_next[1,:].T)
-# plt.plot(cmd.T)
+# plt.plot(traj_next[0,:].T,traj_next[1,:].T)
+plt.plot(cmd.T)
+plt.plot(cmd1.T)
+plt.plot(full_cmd.T)
+
 plt.show()

@@ -2,7 +2,7 @@ import casadi as cs
 import MPC.actuated_dynamics as dynamics
 
 
-class MPCSolver:
+class BaselineSolver:
 
     def __init__(self, K, W, N, R, LUT_list):
 
@@ -17,10 +17,10 @@ class MPCSolver:
         self.opti.solver("ipopt", opts)
 
         self.x0 = self.opti.parameter(4)
-        self.xs = self.opti.variable(4, self.N)
-        self.xf = self.opti.variable(6, self.N)
-        self.dt = self.opti.variable(2)
-        self.u = self.opti.variable(2, N)
+        self.xs = self.opti.variable(4, 2*self.N)
+        self.xf = self.opti.variable(6, 2*self.N)
+        self.dt = self.opti.variable(4)
+        self.u = self.opti.variable(2, 2*self.N)
 
         self.register_LUT(LUT_list)
         self.build_dynamics()
@@ -43,18 +43,35 @@ class MPCSolver:
                 self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.dt[0], self.u[0, i])
             )
             self.opti.subject_to(
+                self.xs[:,self.N + i + 1] == self.RK4s(self.xs[:,self.N + i], self.dt[2], self.u[0, self.N+i])
+            )
+            self.opti.subject_to(
                 self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.dt[1], self.u[1, i])
             )
+            self.opti.subject_to(
+                self.xf[:, self.N + i + 1] == self.RK4f(self.xf[:, self.N + i], self.dt[3], self.u[1, self.N+i])
+            )
             J += self.u[:, i].T @ self.R @ self.u[:, i]
+            J += self.u[:, self.N+i].T @ self.R @ self.u[:, self.N+i]
 
         # initial condition
         self.opti.subject_to(self.xs[:, 0] == self.x0)
 
         # lift-off
+        self.opti.subject_to(self.xs[0, self.N-1] ** 2 + self.xs[1, self.N-1] ** 2 == 1)
+        self.opti.subject_to(self.xf[[0,1,3,4], 0] == self.xs[:, self.N-1])
+        self.opti.subject_to(self.xf[2,0] == cs.atan(-self.xs[0,self.N-1]/self.xs[1,self.N-1]))
+        self.opti.subject_to(self.xf[5,0] == self.xs[0,self.N-1]*self.xs[3,self.N-1] - self.xs[1,self.N-1]*self.xs[2,self.N-1])
+
         self.opti.subject_to(self.xs[0, -1] ** 2 + self.xs[1, -1] ** 2 == 1)
-        self.opti.subject_to(self.xf[[0,1,3,4], 0] == self.xs[:, -1])
-        self.opti.subject_to(self.xf[2,0] == cs.atan(-self.xs[0,-1]/self.xs[1,-1]))
-        self.opti.subject_to(self.xf[5,0] == self.xs[0,-1]*self.xs[3,-1] - self.xs[1,-1]*self.xs[2,-1])
+        self.opti.subject_to(self.xf[[0,1,3,4], self.N] == self.xs[:, -1])
+        self.opti.subject_to(self.xf[2,self.N] == cs.atan(-self.xs[0,-1]/self.xs[1,-1]))
+        self.opti.subject_to(self.xf[5,self.N] == self.xs[0,-1]*self.xs[3,-1] - self.xs[1,-1]*self.xs[2,-1])
+
+        # touch down and continuity
+        self.opti.subject_to(cs.cos(self.xf[2, self.N-1]) == self.xf[1, self.N-1])
+        self.opti.subject_to(self.xs[[1,2,3],self.N] == self.xf[[1,3,4],self.N-1])
+        self.opti.subject_to(self.xs[0,self.N] == -cs.sin(self.xf[2,self.N-1]))
 
         # terminal constraint
         self.opti.subject_to(cs.cos(self.xf[2, -1]) == self.xf[1, -1])
@@ -69,13 +86,15 @@ class MPCSolver:
 
         # # running cost
         self.opti.minimize(J)
+        self.opti.subject_to(self.dt>0)
+        self.opti.subject_to(self.dt<5)
 
-    def initialize(self, x0, xs, xf, dt):
+    def initialize(self, x0, xs, xf, dt,u):
         self.opti.set_value(self.x0, x0)
         self.opti.set_initial(self.xs, xs)
         self.opti.set_initial(self.xf, xf)
         self.opti.set_initial(self.dt, dt)
-        self.opti.set_initial(self.u, cs.GenDM_zeros(2, self.N))
+        self.opti.set_initial(self.u, u)
 
     def solve(self):
         self.opti.solve()
