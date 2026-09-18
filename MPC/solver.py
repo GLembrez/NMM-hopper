@@ -36,7 +36,7 @@ class MPCSolver:
         dynamics.build(self)
 
     def constraints(self):
-        J = 0
+        self.J = 0
         for i in range(self.N - 1):
             # dynamics constraint
             self.opti.subject_to(
@@ -45,7 +45,7 @@ class MPCSolver:
             self.opti.subject_to(
                 self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.dt[1], self.u[1, i])
             )
-            J += self.u[:, i].T @ self.R @ self.u[:, i]
+            self.J += self.u[:, i].T @ self.R @ self.u[:, i]
 
         # initial condition
         self.opti.subject_to(self.xs[:, 0] == self.x0)
@@ -65,10 +65,10 @@ class MPCSolver:
         gamma = cs.vertcat(
             self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
         )
-        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-4)
+        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
 
         # # running cost
-        self.opti.minimize(J)
+        self.opti.minimize(self.J)
 
     def initialize(self, x0, xs, xf, dt):
         self.opti.set_value(self.x0, x0)

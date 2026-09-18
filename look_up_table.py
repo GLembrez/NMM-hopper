@@ -7,7 +7,7 @@ from MPC.solver import MPCSolver
 from MPC.baseline import BaselineSolver
 
 N_SAMPLES = 100
-R = cs.DM([[1,0],[0,10]])
+R = cs.DM([[10,0],[0,1]])
 NMM_solver = Continuation_Solver(40,1,True)
 
 def get_touch_down(solver,u):
@@ -86,47 +86,59 @@ solver_L = build_solver(NMM_locomotion,100,R,True)
 solver_RL = build_solver(NMM_switch,100,R,False)
 solver_LR = build_solver(NMM_switch,100,R,True)
 
-u_star = NMM_locomotion[100]
-u_switch = NMM_switch[np.argmin(np.abs(NMM_switch[:,-1]-u_star[-1]))]
-traj_star = get_trajectory(NMM_solver,u_star)
-traj_switch = get_trajectory(NMM_solver,u_switch)
+efficiency = []
+velocity = []
+
+for idx in range(50,150,2):
+
+    u_star = NMM_locomotion[idx]
+    u_switch = NMM_switch[np.argmin(np.abs(NMM_switch[:,-1]-u_star[-1]))]
+    traj_star = get_trajectory(NMM_solver,u_star)
+    traj_switch = get_trajectory(NMM_solver,u_switch)
 
 
-x01 = traj_star[[0,1,3,4],0]
-xs1 = traj_star[[0,1,3,4],:50]
-xf1 = traj_star[:,50:]
-dt1 = cs.vertcat(u_star[7],u_star[6]+u_star[8])
-solver_RL.initialize(x01,xs1,xf1,dt1)
-xs_star,xf_star,dt_star,cmd = solver_RL.solve()
+    x01 = traj_star[[0,1,3,4],0]
+    xs1 = traj_star[[0,1,3,4],:50]
+    xf1 = traj_star[:,50:]
+    dt1 = cs.vertcat(u_star[7],u_star[6]+u_star[8])
 
-x02 = xf_star[[0,1,3,4],-1]
-x02[0] = -cs.sin(xf_star[2,-1])
-xs2 = traj_switch[[0,1,3,4],:50]
-xf2 = traj_star[:,50:]
-xf2[[0,2,3,5],:] = -xf2[[0,2,3,5],:] 
-xf2[0,:] += xs2[0,-1] - xf2[0,0]
-dt2 = cs.vertcat(u_switch[7],u_switch[6]+u_switch[8])
-# x0[0] += -cs.sin(xf_star[2,-1])-x0[0]
-# xs[0,:] += -cs.sin(xf_star[2,-1])-xs[0,0]
-# xf[0,:] += -cs.sin(xf_star[2,-1])-xf[0,0]
+    try:
+        solver_RL.initialize(x01,xs1,xf1,dt1)
+        xs_star,xf_star,dt_star,cmd = solver_RL.solve()
 
 
-solver_L.initialize(x02,xs2,xf2,dt2)
-e = NMM_solver.energy_flight(xf_star[:,-1])
-print(solver_L.LUT_x(e),solver_L.LUT_y(e),solver_L.LUT_dx(e),solver_L.LUT_dy(e))
-print(xf2[:,-1])
-print(x02)
-print(xs2[:,0])
-xs_star1,xf_star1,dt_star1,cmd1 = solver_L.solve()
+        x02 = xf_star[[0,1,3,4],-1]
+        x02[0] = -cs.sin(xf_star[2,-1])
+        xs2 = traj_switch[[0,1,3,4],:50]
+        xf2 = traj_star[:,50:]
+        xf2[[0,2,3,5],:] = -xf2[[0,2,3,5],:] 
+        xf2[0,:] += xs2[0,-1] - xf2[0,0]
+        dt2 = cs.vertcat(u_switch[7],u_switch[6]+u_switch[8])
 
-traj_next = NMM_solver.traj_s_list(NMM_solver.flight_to_stance(xf_star1[:,-1]),dt_star1[0],0)
-traj_next[0,:] += xf_star[0,-1] - traj_next[0,0]
 
-full_traj_s = cs.horzcat(xs1,xs2)
-full_traj_f = cs.horzcat(xf1,xf2)
-full_traj_dt = cs.vertcat(dt1,dt2)
-baseline_solver.initialize(x01,full_traj_s,full_traj_f,full_traj_dt,cs.horzcat(cmd,cmd1))
-full_s,full_f,full_dt,full_cmd = baseline_solver.solve()
+        solver_L.initialize(x02,xs2,xf2,dt2)
+        e = NMM_solver.energy_flight(xf_star[:,-1])
+        print(solver_L.LUT_x(e),solver_L.LUT_y(e),solver_L.LUT_dx(e),solver_L.LUT_dy(e))
+        print(xf2[:,-1])
+        print(x02)
+        print(xs2[:,0])
+        xs_star1,xf_star1,dt_star1,cmd1 = solver_L.solve()
+
+        traj_next = NMM_solver.traj_s_list(NMM_solver.flight_to_stance(xf_star1[:,-1]),dt_star1[0],0)
+        traj_next[0,:] += xf_star[0,-1] - traj_next[0,0]
+
+        full_traj_s = cs.horzcat(xs1,xs2)
+        full_traj_f = cs.horzcat(xf1,xf2)
+        full_traj_dt = cs.vertcat(dt1,dt2)
+        baseline_solver.initialize(x01,full_traj_s,full_traj_f,full_traj_dt,cs.horzcat(cmd,cmd1))
+        full_s,full_f,full_dt,full_cmd = baseline_solver.solve()
+
+        J = solver_L.opti.value(solver_L.J)+solver_RL.opti.value(solver_RL.J)
+        J_star = baseline_solver.opti.value(baseline_solver.J)
+        efficiency.append(np.abs(J_star - J) / J_star)
+        velocity.append(np.abs(u_star[3]))
+    except:
+        print('problem detected')
 
 fig = plt.figure()
 # plt.plot(NMM[:,1],NMM[:,3])
@@ -145,8 +157,10 @@ fig = plt.figure()
 # plt.plot(traj_star[0,:],traj_star[1,:])
 # plt.plot(traj_switch[0,:],traj_switch[1,:])
 # plt.plot(traj_next[0,:].T,traj_next[1,:].T)
-plt.plot(cmd.T)
-plt.plot(cmd1.T)
-plt.plot(full_cmd.T)
+# plt.plot(cmd.T)
+# plt.plot(cmd1.T)
+# plt.plot(full_cmd.T)
+
+plt.plot(velocity,efficiency)
 
 plt.show()
