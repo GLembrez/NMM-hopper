@@ -7,7 +7,7 @@ from MPC.solver import MPCSolver
 from MPC.baseline import BaselineSolver
 
 N_SAMPLES = 100
-R = cs.DM([[10,0],[0,1]])
+R = cs.DM([[1,0],[0,1]])
 NMM_solver = Continuation_Solver(40,1,True)
 
 def get_touch_down(solver,u):
@@ -44,7 +44,7 @@ def build_solver(data,N_SAMPLES,R,reverse=False):
         NMM_touch_down.append(get_touch_down(NMM_solver,NMM_sampled[i,:]))
     NMM_touch_down = np.array(NMM_touch_down).reshape((NMM_sampled.shape[0],-1))
     LUT_x = cs.interpolant('LUTx','bspline',[NMM_sampled[:,-1]],-np.sin(NMM_touch_down[:,2]))
-    LUT_y = cs.interpolant('LUTy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,1])
+    LUT_y = cs.interpolant('LUTy','bspline',[NMM_sampled[:,-1]],np.cos(NMM_touch_down[:,2]))
     LUT_dx = cs.interpolant('LUTdx','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,3])
     LUT_dy = cs.interpolant('LUTdy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,4])
     LUT_list = [LUT_x,LUT_y,LUT_dx,LUT_dy]
@@ -74,7 +74,7 @@ for i in range(NMM_sampled.shape[0]):
     NMM_touch_down.append(get_touch_down(NMM_solver,NMM_sampled[i,:]))
 NMM_touch_down = np.array(NMM_touch_down).reshape((NMM_sampled.shape[0],-1))
 LUT_x = cs.interpolant('LUTx','bspline',[NMM_sampled[:,-1]],-np.sin(NMM_touch_down[:,2]))
-LUT_y = cs.interpolant('LUTy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,1])
+LUT_y = cs.interpolant('LUTy','bspline',[NMM_sampled[:,-1]],np.cos(NMM_touch_down[:,2]))
 LUT_dx = cs.interpolant('LUTdx','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,3])
 LUT_dy = cs.interpolant('LUTdy','bspline',[NMM_sampled[:,-1]],NMM_touch_down[:,4])
 LUT_list = [LUT_x,LUT_y,LUT_dx,LUT_dy]
@@ -89,7 +89,7 @@ solver_LR = build_solver(NMM_switch,100,R,True)
 efficiency = []
 velocity = []
 
-for idx in range(50,150,2):
+for idx in  [100]: #range(50,150,2):
 
     u_star = NMM_locomotion[idx]
     u_switch = NMM_switch[np.argmin(np.abs(NMM_switch[:,-1]-u_star[-1]))]
@@ -102,43 +102,46 @@ for idx in range(50,150,2):
     xf1 = traj_star[:,50:]
     dt1 = cs.vertcat(u_star[7],u_star[6]+u_star[8])
 
-    try:
-        solver_RL.initialize(x01,xs1,xf1,dt1)
-        xs_star,xf_star,dt_star,cmd = solver_RL.solve()
+    # try:
+    solver_RL.initialize(x01,xs1,xf1,dt1)
+    xs_star,xf_star,dt_star,cmd = solver_RL.solve()
 
 
-        x02 = xf_star[[0,1,3,4],-1]
-        x02[0] = -cs.sin(xf_star[2,-1])
-        xs2 = traj_switch[[0,1,3,4],:50]
-        xf2 = traj_star[:,50:]
-        xf2[[0,2,3,5],:] = -xf2[[0,2,3,5],:] 
-        xf2[0,:] += xs2[0,-1] - xf2[0,0]
-        dt2 = cs.vertcat(u_switch[7],u_switch[6]+u_switch[8])
+    x02 = xf_star[[0,1,3,4],-1]
+    x02[0] = -cs.sin(xf_star[2,-1])
+    xs2 = traj_switch[[0,1,3,4],:50]
+    xf2 = traj_star[:,50:]
+    xf2[[0,2,3,5],:] = -xf2[[0,2,3,5],:] 
+    xf2[0,:] += xs2[0,-1] - xf2[0,0]
+    dt2 = cs.vertcat(u_switch[7],u_switch[6]+u_switch[8])
 
 
-        solver_L.initialize(x02,xs2,xf2,dt2)
-        e = NMM_solver.energy_flight(xf_star[:,-1])
-        print(solver_L.LUT_x(e),solver_L.LUT_y(e),solver_L.LUT_dx(e),solver_L.LUT_dy(e))
-        print(xf2[:,-1])
-        print(x02)
-        print(xs2[:,0])
-        xs_star1,xf_star1,dt_star1,cmd1 = solver_L.solve()
+    solver_L.initialize(x02,xs2,xf2,dt2)
+    e = NMM_solver.energy_flight(xf_star[:,-1])
+    print(solver_L.LUT_x(e),solver_L.LUT_y(e),solver_L.LUT_dx(e),solver_L.LUT_dy(e))
+    print(xf2[:,-1])
+    print(x02)
+    print(xs2[:,0])
+    xs_star1,xf_star1,dt_star1,cmd1 = solver_L.solve()
 
-        traj_next = NMM_solver.traj_s_list(NMM_solver.flight_to_stance(xf_star1[:,-1]),dt_star1[0],0)
-        traj_next[0,:] += xf_star[0,-1] - traj_next[0,0]
+    traj_next = NMM_solver.traj_s_list(NMM_solver.flight_to_stance(xf_star[:,-1]),dt_star[0],0)
+    traj_next[0,:] += xf_star[0,-1] - traj_next[0,0]
 
-        full_traj_s = cs.horzcat(xs1,xs2)
-        full_traj_f = cs.horzcat(xf1,xf2)
-        full_traj_dt = cs.vertcat(dt1,dt2)
-        baseline_solver.initialize(x01,full_traj_s,full_traj_f,full_traj_dt,cs.horzcat(cmd,cmd1))
-        full_s,full_f,full_dt,full_cmd = baseline_solver.solve()
+    # full_traj_s = cs.horzcat(xs1,xs2)
+    # full_traj_f = cs.horzcat(xf1,xf2)
+    # full_traj_dt = cs.vertcat(dt1,dt2)
+    # baseline_solver.initialize(x01,full_traj_s,full_traj_f,full_traj_dt,cs.horzcat(cmd,cmd1))
+    # full_s,full_f,full_dt,full_cmd = baseline_solver.solve()
 
-        J = solver_L.opti.value(solver_L.J)+solver_RL.opti.value(solver_RL.J)
-        J_star = baseline_solver.opti.value(baseline_solver.J)
-        efficiency.append(np.abs(J_star - J) / J_star)
-        velocity.append(np.abs(u_star[3]))
-    except:
-        print('problem detected')
+    # J = solver_L.opti.value(solver_L.J)+solver_RL.opti.value(solver_RL.J)
+    # print(u_star[-1])
+    # print(solver_RL.opti.value(solver_RL.alpha))
+    # print(solver_L.opti.value(solver_L.alpha))
+    # J_star = baseline_solver.opti.value(baseline_solver.J)
+    # efficiency.append(np.abs(J_star - J) / J_star)
+    # velocity.append(np.abs(u_star[3]))
+    # except:
+    #     print('problem detected')
 
 fig = plt.figure()
 # plt.plot(NMM[:,1],NMM[:,3])
@@ -146,21 +149,21 @@ fig = plt.figure()
 # plt.plot(LUT_y(E_linspace),LUT_dx(E_linspace))
 # plt.plot(xs1[0,:],xs1[1,:],'teal')
 # plt.plot(xf1[0,:],xf1[1,:],'teal')
-# plt.plot(xs2[0,:],xs2[1,:],'blue')
-# plt.plot(xf2[0,:],xf2[1,:],'blue')
-# plt.plot(xs_star[0,:],xs_star[1,:],'red')
-# plt.plot(xf_star[0,:],xf_star[1,:],'red')
-# plt.plot(xs_star1[0,:],xs_star1[1,:],'green')
-# plt.plot(xf_star1[0,:],xf_star1[1,:],'green')
+plt.plot(xs2[0,:],xs2[1,:],'magenta')
+plt.plot(xf2[0,:],xf2[1,:],'magenta')
+plt.plot(xs_star[0,:],xs_star[1,:],'red')
+plt.plot(xf_star[0,:],xf_star[1,:],'red')
+plt.plot(xs_star1[0,:],xs_star1[1,:],'green')
+plt.plot(xf_star1[0,:],xf_star1[1,:],'green')
 # plt.plot(full_s[0,:],full_s[1,:],'blue')
 # plt.plot(full_f[0,:],full_f[1,:],'blue')
 # plt.plot(traj_star[0,:],traj_star[1,:])
 # plt.plot(traj_switch[0,:],traj_switch[1,:])
-# plt.plot(traj_next[0,:].T,traj_next[1,:].T)
+plt.plot(traj_next[0,:].T,traj_next[1,:].T)
 # plt.plot(cmd.T)
 # plt.plot(cmd1.T)
 # plt.plot(full_cmd.T)
 
-plt.plot(velocity,efficiency)
+# plt.plot(velocity,efficiency)
 
 plt.show()

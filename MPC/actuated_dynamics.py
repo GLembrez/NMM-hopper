@@ -33,7 +33,7 @@ def build(solver):
     xf_ = xf + dt / 6 * (k1f + 2 * k2f + 2 * k3f + k4f)
 
     s2f = cs.vertcat(
-        xs[:2], cs.atan(-xs[0] / xs[1]), xs[2:], (xs[0] * xs[3] - xs[1] * xs[2]) / l
+        xs[:2], cs.atan2(-xs[0] , xs[1]), xs[2:], (xs[0] * xs[3] - xs[1] * xs[2]) / l**2
     )
     f2s = cs.vertcat(-cs.sin(xf[2]), cs.cos(xf[2]), xf[3:5])
 
@@ -42,9 +42,9 @@ def build(solver):
     RK4s = cs.Function("RK4s", [xs, dt, u], [xs_])
     RK4f = cs.Function("RK4f", [xf, dt, u], [xf_])
 
-    traj_f = RK4f.fold(N)
+    traj_f = RK4f.fold(N//2) # for onsistency with apex -> TD -> LO -> apex
     traj_s = RK4s.fold(N)
-    traj_f_list = RK4f.mapaccum(N)
+    traj_f_list = RK4f.mapaccum(N//2)
     traj_s_list = RK4s.mapaccum(N)
 
     solver.stance_to_flight = stance_to_flight

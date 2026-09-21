@@ -21,6 +21,7 @@ class BaselineSolver:
         self.xf = self.opti.variable(6, 2*self.N)
         self.dt = self.opti.variable(4)
         self.u = self.opti.variable(2, 2*self.N)
+        self.alpha = self.opti.variable()
 
         self.register_LUT(LUT_list)
         self.build_dynamics()
@@ -78,11 +79,12 @@ class BaselineSolver:
         x_TD = cs.vertcat(
             -cs.sin(self.xf[2, -1]), cs.cos(self.xf[2, -1]), self.xf[3:5, -1]
         )
-        E_TD = 0.5 * (x_TD[2] ** 2 + x_TD[3] ** 2) + x_TD[1]
+        E_TD = self.alpha
         gamma = cs.vertcat(
             self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
         )
-        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
+        # self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
+        self.opti.subject_to(x_TD == gamma)
 
         # # running cost
         self.opti.minimize(self.J)
@@ -93,6 +95,7 @@ class BaselineSolver:
         self.opti.set_initial(self.xf, xf)
         self.opti.set_initial(self.dt, dt)
         self.opti.set_initial(self.u, u)
+        self.opti.set_initial(self.alpha, 0.5*(xf[3,0]**2 + xf[4,0]**2) + xf[1,0])
 
     def solve(self):
         self.opti.solve()

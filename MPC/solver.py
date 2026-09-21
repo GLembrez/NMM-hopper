@@ -21,16 +21,14 @@ class MPCSolver:
         self.xf = self.opti.variable(6, self.N)
         self.dt = self.opti.variable(2)
         self.u = self.opti.variable(2, N)
+        self.alpha = self.opti.variable()
+        self.LUT_x = LUT_list[0]
+        self.LUT_y = LUT_list[1]
+        self.LUT_dx = LUT_list[2]
+        self.LUT_dy = LUT_list[3]
 
-        self.register_LUT(LUT_list)
         self.build_dynamics()
         self.constraints()
-
-    def register_LUT(self, LUT_lists):
-        self.LUT_x = LUT_lists[0]
-        self.LUT_y = LUT_lists[1]
-        self.LUT_dx = LUT_lists[2]
-        self.LUT_dy = LUT_lists[3]
 
     def build_dynamics(self):
         dynamics.build(self)
@@ -59,13 +57,17 @@ class MPCSolver:
         # terminal constraint
         self.opti.subject_to(cs.cos(self.xf[2, -1]) == self.xf[1, -1])
         x_TD = cs.vertcat(
-            -cs.sin(self.xf[2, -1]), cs.cos(self.xf[2, -1]), self.xf[3:5, -1]
+            -cs.sin(self.xf[2, -1]), cs.cos(self.xf[2, -1]), self.xf[3, -1], self.xf[4, -1]
         )
-        E_TD = 0.5 * (x_TD[2] ** 2 + x_TD[3] ** 2) + x_TD[1]
+        # E_TD = 0.5 * (x_TD[2] ** 2 + x_TD[3] ** 2) + x_TD[1]
         gamma = cs.vertcat(
-            self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
+            self.LUT_x(self.alpha), 
+            self.LUT_y(self.alpha), 
+            self.LUT_dx(self.alpha), 
+            self.LUT_dy(self.alpha)
         )
-        self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
+        # self.opti.subject_to(cs.sqrt((x_TD - gamma).T @ (x_TD - gamma) )<= 1e-1)
+        self.opti.subject_to(x_TD == gamma)
 
         # # running cost
         self.opti.minimize(self.J)
@@ -76,6 +78,7 @@ class MPCSolver:
         self.opti.set_initial(self.xf, xf)
         self.opti.set_initial(self.dt, dt)
         self.opti.set_initial(self.u, cs.GenDM_zeros(2, self.N))
+        self.opti.set_initial(self.alpha,0.5*(xf[3,0]**2 + xf[4,0]**2) + xf[1,0])
 
     def solve(self):
         self.opti.solve()
