@@ -8,8 +8,8 @@ class Solver:
         self.N = N 
         self.W = W
         self.K = K
-        self.E_MIN = E_MIN
-        self.E_MAX = E_MAX
+        self.E_MIN = 2.8
+        self.E_MAX = 3.2
         self.reverse = reverse
         self.EVENT_MARGIN = 1e-3
         self.H_MIN = 1e-8
@@ -86,7 +86,13 @@ class Solver:
         # terminal tube constraint
         xtd = self.flight_to_stance(self.xf[1][:, -1])
         rt = self.St @ (xtd[1:] - target_f[[1,3,4],-1])
-        self.opti.subject_to(cs.sumsqr(rt) <= (1e-2)**2)
+        self.opti.subject_to(cs.sumsqr(rt) <= (1e-4)**2)
+
+
+        # xtd_ = self.flight_to_stance(self.xf[0][:, -1])
+        # target_f_ = cs.vertcat(target_f[1],-target_f[3],target_f[4])
+        # rt_ = self.St @ (xtd_[1:] - target_f_)
+        # self.opti.subject_to(cs.sumsqr(rt_) <= (1e-1)**2)
 
         if self.reverse:
             xsw = self.xf[0][:, -1]

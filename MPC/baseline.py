@@ -1,107 +1,128 @@
-import casadi as cs
-import MPC.actuated_dynamics as dynamics
+import casadi as cs 
+import MPC.actuated_dynamics as dynamics 
 
+class Solver:
 
-class BaselineSolver:
+    def __init__(self,N,K,W,E_MIN,E_MAX,LUT,reverse=False):
+        self.LUT = LUT
+        self.N = N 
+        self.W = W
+        self.K = K
+        self.E_MIN = E_MIN
+        self.E_MAX = E_MAX
+        self.reverse = reverse
+        self.EVENT_MARGIN = 1e-3
+        self.H_MIN = 1e-8
+        self.H_MAX = 1e-1
 
-    def __init__(self, K, W, N, R, LUT_list):
-
-        self.N = N  # number of samples in each phase
-        self.K = K  # dimensionless stiffness
-        self.W = W  # dimensionless swing frequency
-        self.R = R  # QR weight (Q = 0)
+        self.St = cs.diag(cs.DM([1,1,1]))
+        self.Ss = cs.diag(cs.DM([1,1,1]))
+        self.Sf = cs.diag(cs.DM([1,1,1,1,1]))
 
         # create solver instance using casadi opti stack
-        opts = {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-12}
+        opts = {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-6}
         self.opti = cs.Opti()
         self.opti.solver("ipopt", opts)
 
         self.x0 = self.opti.parameter(4)
-        self.xs = self.opti.variable(4, 2*self.N)
-        self.xf = self.opti.variable(6, 2*self.N)
-        self.dt = self.opti.variable(4)
-        self.u = self.opti.variable(2, 2*self.N)
+        self.xs = [self.opti.variable(4, N) for _ in range(2)]
+        self.xf = [self.opti.variable(6, N) for _ in range(2)]
+        self.us = [self.opti.variable(N - 1) for _ in range(2)]
+        self.uf = [self.opti.variable(N - 1) for _ in range(2)]
+        self.h = self.opti.variable(4)
         self.alpha = self.opti.variable()
+        self.hs = self.h[[0, 2]]
+        self.hf = self.h[[1, 3]]
 
-        self.register_LUT(LUT_list)
+        self.opti.subject_to(self.opti.bounded(self.H_MIN, self.h, self.H_MAX))
+        self.opti.subject_to(self.opti.bounded(E_MIN, self.alpha, E_MAX))
+
         self.build_dynamics()
-        self.constraints()
+        self.constrain()
 
-    def register_LUT(self, LUT_lists):
-        self.LUT_x = LUT_lists[0]
-        self.LUT_y = LUT_lists[1]
-        self.LUT_dx = LUT_lists[2]
-        self.LUT_dy = LUT_lists[3]
+    def constrain(self):
+        Ju = 0
+
+        # look-up target trajectory
+        # TODO use surface LUT M(alpha,phi) instead of generating the whole dynamics
+        u_star = self.LUT(self.alpha)
+        target_f2 = self.traj_f_list(u_star[:6],u_star[6],0)
+        target_s = self.traj_s_list(self.flight_to_stance(target_f2[:,-1]),u_star[7],0)
+        target_f1 = self.traj_f_list(self.stance_to_flight(target_s[:,-1]),u_star[8],0)
+        target_f = cs.horzcat(target_f1,target_f2)
+
+        for j in range(2):
+            # dynamics constraint
+            self.add_dynamics(self.xs[j],self.us[j],self.hs[j],self.RK4s)
+            self.add_dynamics(self.xf[j],self.uf[j],self.hf[j],self.RK4f)
+
+            # intra-step continuity
+            self.opti.subject_to(self.xf[j][:, 0] == self.stance_to_flight(self.xs[j][:, -1]))
+
+            # lift-off
+            self.opti.subject_to(self.liftoff(self.xs[j][:, -1]) == 0)
+            self.opti.subject_to(self.liftoff_rate(self.xs[j][:, -1]) >= self.EVENT_MARGIN)
+
+            # touch-down
+            self.opti.subject_to(self.touchdown(self.xf[j][:, -1]) == 0)
+            self.opti.subject_to(self.touchdown_rate(self.xf[j][:, -1]) <= -self.EVENT_MARGIN)
+
+            # running cost
+            Ju += self.hs[j] * cs.sumsqr(self.us[j]) + self.hf[j] * cs.sumsqr(self.uf[j])
+
+        # inter-step continuity
+        self.opti.subject_to(self.xs[1][:, 0] == self.flight_to_stance(self.xf[0][:, -1]))
+
+        # initial constraint 
+        self.opti.subject_to(self.xs[0][:,0] == self.x0)
+
+        # terminal tube constraint
+        xtd = self.flight_to_stance(self.xf[1][:, -1])
+        rt = self.St @ (xtd[1:] - target_f[[1,3,4],-1])
+        self.opti.subject_to(cs.sumsqr(rt) <= (1e-2)**2)
+
+        self.opti.minimize(Ju)
 
     def build_dynamics(self):
         dynamics.build(self)
 
-    def constraints(self):
-        self.J = 0
-        for i in range(self.N - 1):
-            # dynamics constraint
-            self.opti.subject_to(
-                self.xs[:, i + 1] == self.RK4s(self.xs[:, i], self.dt[0], self.u[0, i])
-            )
-            self.opti.subject_to(
-                self.xs[:,self.N + i + 1] == self.RK4s(self.xs[:,self.N + i], self.dt[2], self.u[0, self.N+i])
-            )
-            self.opti.subject_to(
-                self.xf[:, i + 1] == self.RK4f(self.xf[:, i], self.dt[1], self.u[1, i])
-            )
-            self.opti.subject_to(
-                self.xf[:, self.N + i + 1] == self.RK4f(self.xf[:, self.N + i], self.dt[3], self.u[1, self.N+i])
-            )
-            self.J += self.u[:, i].T @ self.R @ self.u[:, i]
-            self.J += self.u[:, self.N+i].T @ self.R @ self.u[:, self.N+i]
+    def add_dynamics(self, x, u, h, step):
+        for k in range(self.N-1):
+            self.opti.subject_to(x[:, k + 1] == step(x[:, k], h, u[k]))
 
-        # initial condition
-        self.opti.subject_to(self.xs[:, 0] == self.x0)
-
-        # lift-off
-        self.opti.subject_to(self.xs[0, self.N-1] ** 2 + self.xs[1, self.N-1] ** 2 == 1)
-        self.opti.subject_to(self.xf[[0,1,3,4], 0] == self.xs[:, self.N-1])
-        self.opti.subject_to(self.xf[2,0] == cs.atan(-self.xs[0,self.N-1]/self.xs[1,self.N-1]))
-        self.opti.subject_to(self.xf[5,0] == self.xs[0,self.N-1]*self.xs[3,self.N-1] - self.xs[1,self.N-1]*self.xs[2,self.N-1])
-
-        self.opti.subject_to(self.xs[0, -1] ** 2 + self.xs[1, -1] ** 2 == 1)
-        self.opti.subject_to(self.xf[[0,1,3,4], self.N] == self.xs[:, -1])
-        self.opti.subject_to(self.xf[2,self.N] == cs.atan(-self.xs[0,-1]/self.xs[1,-1]))
-        self.opti.subject_to(self.xf[5,self.N] == self.xs[0,-1]*self.xs[3,-1] - self.xs[1,-1]*self.xs[2,-1])
-
-        # touch down and continuity
-        self.opti.subject_to(cs.cos(self.xf[2, self.N-1]) == self.xf[1, self.N-1])
-        self.opti.subject_to(self.xs[[1,2,3],self.N] == self.xf[[1,3,4],self.N-1])
-        self.opti.subject_to(self.xs[0,self.N] == -cs.sin(self.xf[2,self.N-1]))
-
-        # terminal constraint
-        self.opti.subject_to(cs.cos(self.xf[2, -1]) == self.xf[1, -1])
-        x_TD = cs.vertcat(
-            -cs.sin(self.xf[2, -1]), cs.cos(self.xf[2, -1]), self.xf[3:5, -1]
-        )
-        E_TD = self.alpha
-        gamma = cs.vertcat(
-            self.LUT_x(E_TD), self.LUT_y(E_TD), self.LUT_dx(E_TD), self.LUT_dy(E_TD)
-        )
-        # self.opti.subject_to((x_TD - gamma).T @ (x_TD - gamma) <= 1e-3)
-        self.opti.subject_to(x_TD == gamma)
-
-        # # running cost
-        self.opti.minimize(self.J)
-
-    def initialize(self, x0, xs, xf, dt,u):
+    def initialize(self,x0,xs_guess,xf_guess,h_guess):
         self.opti.set_value(self.x0, x0)
-        self.opti.set_initial(self.xs, xs)
-        self.opti.set_initial(self.xf, xf)
-        self.opti.set_initial(self.dt, dt)
-        self.opti.set_initial(self.u, u)
-        self.opti.set_initial(self.alpha, 0.5*(xf[3,0]**2 + xf[4,0]**2) + xf[1,0])
+        self.opti.set_initial(self.h, h_guess)
+        self.opti.set_initial(self.alpha, 0.5*(x0[2]**2 + x0[3]**2) + x0[1])
+        for j in range(2):
+            self.opti.set_initial(self.xs[j], xs_guess[j])
+            self.opti.set_initial(self.xf[j], xf_guess[j])
+            self.opti.set_initial(self.us[j], 0)
+            self.opti.set_initial(self.uf[j], 0)
 
     def solve(self):
-        self.opti.solve()
-        return (
-            self.opti.value(self.xs),
-            self.opti.value(self.xf),
-            self.opti.value(self.dt),
-            self.opti.value(self.u),
-        )
+        sol = self.opti.solve()
+        return {
+            "stance": [sol.value(x) for x in self.xs],
+            "flight": [sol.value(x) for x in self.xf],
+            "stance_control": [sol.value(u) for u in self.us],
+            "flight_control": [sol.value(u) for u in self.uf],
+            "step_size": sol.value(self.h),
+            "alpha": sol.value(self.alpha),
+        }
+    
+    @staticmethod
+    def liftoff(x):
+        return x[0]**2 + x[1]**2 - 1
+
+    @staticmethod
+    def touchdown(x):
+        return x[1] - cs.cos(x[2])
+
+    @staticmethod
+    def liftoff_rate(x):
+        return x[0] * x[2] + x[1] * x[3]
+
+    @staticmethod
+    def touchdown_rate(x):
+        return x[4] + cs.sin(x[2]) * x[5]
