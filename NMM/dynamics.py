@@ -37,7 +37,7 @@ def build(solver):
     xf_ = xf + dt / 6 * (k1f + 2 * k2f + 2 * k3f + k4f)
 
     s2f = cs.vertcat(
-        xs[:2], cs.atan(-xs[0] / xs[1]), xs[2:], (xs[0] * xs[3] - xs[1] * xs[2]) / l
+        xs[:2], cs.atan(-xs[0] / xs[1]), xs[2:], (xs[0] * xs[3] - xs[1] * xs[2]) / l**2
     )
     f2s = cs.vertcat(-cs.sin(xf[2]), cs.cos(xf[2]), xf[3:5])
 

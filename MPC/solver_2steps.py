@@ -9,7 +9,7 @@ class Solver:
         self.W = W
         self.K = K
         self.E_MIN = 2.8
-        self.E_MAX = 3.2
+        self.E_MAX = 10
         self.reverse = reverse
         self.EVENT_MARGIN = 1e-3
         self.H_MIN = 1e-8
@@ -107,15 +107,15 @@ class Solver:
         for k in range(self.N-1):
             self.opti.subject_to(x[:, k + 1] == step(x[:, k], h, u[k]))
 
-    def initialize(self,x0,xs_guess,xf_guess,h_guess):
+    def initialize(self,x0,xs_guess,xf_guess,h_guess,us_guess=[0,0],uf_guess=[0,0]):
         self.opti.set_value(self.x0, x0)
         self.opti.set_initial(self.h, h_guess)
         self.opti.set_initial(self.alpha, 0.5*(x0[2]**2 + x0[3]**2) + x0[1])
         for j in range(2):
             self.opti.set_initial(self.xs[j], xs_guess[j])
             self.opti.set_initial(self.xf[j], xf_guess[j])
-            self.opti.set_initial(self.us[j], 0)
-            self.opti.set_initial(self.uf[j], 0)
+            self.opti.set_initial(self.us[j], us_guess[j])
+            self.opti.set_initial(self.uf[j], uf_guess[j])
 
     def solve(self):
         sol = self.opti.solve()

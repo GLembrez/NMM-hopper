@@ -1,7 +1,6 @@
 import casadi as cs
 import numpy as np
 from NMM.solver import Continuation_Solver
-from MPC.solver import MPCSolver
 import NMM.BFS as BFS
 import pickle
 
@@ -23,15 +22,21 @@ u0 = np.array([
 w_list = [3,2.5,2,1.5,1,0.5]
 i = 0
 for w in w_list:
-    solver_locomotion = Continuation_Solver(40,w,100000,0.01,True)
-    solver_switch = Continuation_Solver(40,w,100000,0.01,False)
-    NMM_locomotion = BFS.search(u0,solver_locomotion,5)
-    NMM_switch = BFS.search(u0,solver_switch,3)
+    solver_locomotion = Continuation_Solver(40,w,1000,0.01,True)
+    solver_switch = Continuation_Solver(40,w,1000,0.01,False)
+    NMM_locomotion = BFS.search(u0,solver_locomotion,9)
+    NMM_switch = BFS.search(u0,solver_switch,5)
 
-    with open("data/locomotion{}.pkl".format(i), "wb") as file:
-        pickle.dump(NMM_locomotion, file)
-    with open("data/switch{}.pkl".format(i), "wb") as file:
-        pickle.dump(NMM_switch, file)
+    trajectory_space = {
+        "K": 40,
+        "W": w,
+        "STEP_SIZE": 0.01,
+        "locomotion": NMM_locomotion,
+        "switch": NMM_switch,
+    }
+
+    with open("data/dataset_{}.pkl".format(i), "wb") as file:
+        pickle.dump(trajectory_space, file)
 
     i += 1
 
