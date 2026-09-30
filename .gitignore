@@ -25,3 +25,6 @@ tempCodeRunnerFile.py
 
 # video data
 /output/*.mp4
+
+# vector graphics
+/ouput/*.svg

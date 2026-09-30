@@ -58,3 +58,5 @@ def build(solver):
     solver.traj_s = traj_s 
     solver.traj_f_list = traj_f_list 
     solver.traj_s_list = traj_s_list
+    solver.ff = ff
+    solver.fs = fs
