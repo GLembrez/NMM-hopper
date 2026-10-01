@@ -1,5 +1,6 @@
 import casadi as cs 
 import MPC.actuated_dynamics as dynamics 
+from time import perf_counter
 
 class Solver:
 
@@ -15,12 +16,12 @@ class Solver:
         self.H_MIN = 1e-8
         self.H_MAX = 1e-1
 
-        self.St = cs.diag(cs.DM([1,0.01,0.01]))
+        self.St = cs.diag(cs.DM([1,1,1]))
 
         # create solver instance using casadi opti stack
         opts = {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-6}
         self.opti = cs.Opti()
-        self.opti.solver("ipopt", opts)
+        self.opti.solver("ipopt", opts,  {"max_iter": 100})
 
         self.x0 = self.opti.parameter(4)
         self.xs = self.opti.variable(4, N)
@@ -39,7 +40,7 @@ class Solver:
         self.constrain()
 
     def constrain(self):
-        Ju = 0
+        self.Ju = 0
 
         # look-up target trajectory
         u_star = self.LUT(self.alpha)
@@ -61,7 +62,7 @@ class Solver:
         self.opti.subject_to(self.touchdown_rate(self.xf[:, -1]) <= -self.EVENT_MARGIN)
 
         # running cost
-        Ju += self.hs * cs.sumsqr(self.us) + self.hf * cs.sumsqr(self.uf)
+        self.Ju += self.hs * cs.sumsqr(self.us) + self.hf * cs.sumsqr(self.uf)
 
         # initial constraint 
         self.opti.subject_to(self.xs[:,0] == self.x0[:])
@@ -72,7 +73,7 @@ class Solver:
         # self.rt = target_f[:,-1]
         self.opti.subject_to(cs.sumsqr(self.rt) <= (1e-2)**2)
 
-        self.opti.minimize(Ju)
+        self.opti.minimize(self.Ju)
 
     def build_dynamics(self):
         dynamics.build(self)
@@ -91,15 +92,25 @@ class Solver:
         self.opti.set_initial(self.uf, uf_guess)
 
     def solve(self):
-        sol = self.opti.solve()
-        return {
-            "stance": sol.value(self.xs),
-            "flight": sol.value(self.xf),
-            "stance_control": sol.value(self.us),
-            "flight_control": sol.value(self.uf),
-            "step_size": sol.value(self.h),
-            "alpha": sol.value(self.alpha),
-        }
+        try:
+            start = perf_counter()
+            sol = self.opti.solve_limited()
+            end = perf_counter()
+            return {
+                        "stance": sol.value(self.xs),
+                        "flight": sol.value(self.xf),
+                        "stance_control": sol.value(self.us),
+                        "flight_control": sol.value(self.uf),
+                        "step_size": sol.value(self.h),
+                        "alpha": sol.value(self.alpha),
+                        "cost":sol.value(self.Ju),
+                        "wall-time":end-start,
+                        "success":sol.stats()["success"],
+                        "iterations":sol.stats()["iter_count"]
+                    }        
+        except RuntimeError:
+            return {"success":False}
+        
     
     @staticmethod
     def liftoff(x):

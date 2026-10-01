@@ -7,8 +7,8 @@ from scipy.integrate import solve_ivp
 
 x0 = np.array([0.0,1.01,0.0,0.0,0.0,0.0])
 
-w_list = [3,2.5,2,1.5,1]
-k_list = [80,60,40,20,10]
+w_list = np.linspace(1,3,10)
+k_list = np.linspace(15,60,10)
 
 def integrate(x0,fun,event):
     return solve_ivp(

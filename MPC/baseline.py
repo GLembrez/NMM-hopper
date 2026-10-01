@@ -1,5 +1,6 @@
 import casadi as cs 
 import MPC.actuated_dynamics as dynamics 
+from time import perf_counter
 
 class Solver:
 
@@ -16,13 +17,11 @@ class Solver:
         self.H_MAX = 1e-1
 
         self.St = cs.diag(cs.DM([1,1,1]))
-        self.Ss = cs.diag(cs.DM([1,1,1]))
-        self.Sf = cs.diag(cs.DM([1,1,1,1,1]))
 
         # create solver instance using casadi opti stack
         opts = {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-6}
         self.opti = cs.Opti()
-        self.opti.solver("ipopt", opts)
+        self.opti.solver("ipopt", opts,  {"max_iter": 100})
 
         self.x0 = self.opti.parameter(4)
         self.xs = [self.opti.variable(4, N) for _ in range(2)]
@@ -41,7 +40,7 @@ class Solver:
         self.constrain()
 
     def constrain(self):
-        Ju = 0
+        self.Ju = 0
 
         # look-up target trajectory
         # TODO use surface LUT M(alpha,phi) instead of generating the whole dynamics
@@ -68,7 +67,7 @@ class Solver:
             self.opti.subject_to(self.touchdown_rate(self.xf[j][:, -1]) <= -self.EVENT_MARGIN)
 
             # running cost
-            Ju += self.hs[j] * cs.sumsqr(self.us[j]) + self.hf[j] * cs.sumsqr(self.uf[j])
+            self.Ju += self.hs[j] * cs.sumsqr(self.us[j]) + self.hf[j] * cs.sumsqr(self.uf[j])
 
         # inter-step continuity
         self.opti.subject_to(self.xs[1][:, 0] == self.flight_to_stance(self.xf[0][:, -1]))
@@ -81,7 +80,8 @@ class Solver:
         rt = self.St @ (xtd[1:] - target_f[[1,3,4],-1])
         self.opti.subject_to(cs.sumsqr(rt) <= (1e-2)**2)
 
-        self.opti.minimize(Ju)
+
+        self.opti.minimize(self.Ju)
 
     def build_dynamics(self):
         dynamics.build(self)
@@ -101,15 +101,24 @@ class Solver:
             self.opti.set_initial(self.uf[j], 0)
 
     def solve(self):
-        sol = self.opti.solve()
+        # try:
+        start = perf_counter()
+        sol = self.opti.solve_limited()
+        end = perf_counter()
         return {
-            "stance": [sol.value(x) for x in self.xs],
-            "flight": [sol.value(x) for x in self.xf],
-            "stance_control": [sol.value(u) for u in self.us],
-            "flight_control": [sol.value(u) for u in self.uf],
-            "step_size": sol.value(self.h),
-            "alpha": sol.value(self.alpha),
-        }
+                    "stance": [sol.value(x) for x in self.xs],
+                    "flight": [sol.value(x) for x in self.xf],
+                    "stance_control": [sol.value(u) for u in self.us],
+                    "flight_control": [sol.value(u) for u in self.uf],
+                    "step_size": sol.value(self.h),
+                    "alpha": sol.value(self.alpha),
+                    "cost":sol.value(self.Ju),
+                    "wall-time":end-start,
+                    "success":sol.stats()["success"],
+                    "iterations":sol.stats()["iter_count"]
+                }        
+        # except RuntimeError:
+        #     return {"success":False}
     
     @staticmethod
     def liftoff(x):
