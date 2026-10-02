@@ -71,7 +71,7 @@ LUT_BW,Emin_BW,Emax_BW = getLUT(BW)
 LUT_FW_TO_BW,Emin_FW_TO_BW,Emax_FW_TO_BW = getLUT(FW_TO_BW)
 LUT_BW_TO_FW,Emin_BW_TO_FW,Emax_BW_TO_FW = getLUT(BW_TO_FW)
 
-N=20
+N=100
 E_list = np.linspace(3,6,N)
 J1,J2,Jb = [],[],[]
 T1,T2,Tb = [],[],[]
@@ -127,7 +127,30 @@ for E_star in E_list:
     PSb.append(max(max(np.abs(sol_baseline["stance_control"][0])),max(np.abs(sol_baseline["stance_control"][1]))))
     PFb.append(max(max(np.abs(sol_baseline["flight_control"][0])),max(np.abs(sol_baseline["flight_control"][1]))))
 
+T = []
+J = []
+PS = []
+PF = []
+for i in range(N):
+    if np.abs(J1[i]+J2[i]) < 2:
+        T.append(T1[i]+T2[i])
+        J.append(J1[i] + J2[i])
+        PS.append(PS1[i]+ PS2[i])
+        PF.append(PF1[i] + PF2[i])
+
+for t,j,ps,pf in zip(Tb,Jb,PSb,PFb):
+    if np.abs(j)>1:
+        Tb.remove(t)
+        Jb.remove(j)
+        PSb.remove(ps)
+        PFb.remove(pf)
+
+print("median compute time: NMM-guided {:.3f} | baseline {:.3f}".format(np.median(T),np.median(Tb)))
+print("cost bounds: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(J),max(J),min(Jb),max(Jb)))
+print("peak force: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(np.abs(PS)),max(np.abs(PS)),min(np.abs(PSb)),max(np.abs(PSb))))
+print("peak torque: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(np.abs(PF)),max(np.abs(PF)),min(np.abs(PFb)),max(np.abs(PFb))))
+
 plt.figure()
-plt.plot(Tb,'o',linewidth=0)
-plt.plot([T1[i]+T2[i] for i in range(N)],'o',linewidth=0)
+plt.plot(Jb,'o',linewidth=0)
+plt.plot(J,'o',linewidth=0)
 plt.show()
