@@ -7,8 +7,8 @@ from scipy.integrate import solve_ivp
 
 x0 = np.array([0.0,1.01,0.0,0.0,0.0,0.0])
 
-w_list = np.linspace(1,3,10)
-k_list = np.linspace(15,60,10)
+w_list = np.linspace(0.5,2.5,10)
+k_list = np.linspace(5,100,10)
 
 def integrate(x0,fun,event):
     return solve_ivp(
@@ -72,7 +72,7 @@ for w in w_list:
             "switch": NMM_switch,
         }
 
-        with open("data/dataset_{}{}.pkl".format(i,j), "wb") as file:
+        with open("data/dataset_2/dataset_{}{}.pkl".format(i,j), "wb") as file:
             pickle.dump(trajectory_space, file)
 
         j += 1

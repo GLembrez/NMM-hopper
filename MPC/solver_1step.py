@@ -9,14 +9,12 @@ class Solver:
         self.N = N 
         self.W = W
         self.K = K
-        self.E_MIN = 2.8
-        self.E_MAX = 3.2
         self.reverse = reverse
         self.EVENT_MARGIN = 1e-3
-        self.H_MIN = 1e-8
-        self.H_MAX = 1e-1
+        self.T_MIN = 1e-3
+        self.T_MAX = 10
 
-        self.St = cs.diag(cs.DM([1,1,1]))
+        self.St = cs.diag(cs.DM([1,1,1/3,1/2]))
 
         # create solver instance using casadi opti stack
         opts = {"print_time": 0, "ipopt.print_level": 0, "ipopt.tol": 1e-6}
@@ -28,12 +26,12 @@ class Solver:
         self.xf = self.opti.variable(6, N)
         self.us = self.opti.variable(N - 1)
         self.uf = self.opti.variable(N - 1)
-        self.h = self.opti.variable(2)
+        self.T = self.opti.variable(2)
         self.alpha = self.opti.variable()
-        self.hs = self.h[0]
-        self.hf = self.h[1]
+        self.hs = self.T[0] / (self.N-1)
+        self.hf = self.T[1] / (self.N-1)
 
-        self.opti.subject_to(self.opti.bounded(self.H_MIN, self.h, self.H_MAX))
+        self.opti.subject_to(self.opti.bounded(self.T_MIN, self.T, self.T_MAX))
         self.opti.subject_to(self.opti.bounded(E_MIN, self.alpha, E_MAX))
 
         self.build_dynamics()
@@ -69,7 +67,7 @@ class Solver:
 
         # terminal tube constraint
         xtd = self.flight_to_stance(self.xf[:, -1])
-        self.rt =  (xtd[1:] - target_f[[1,3,4],-1])
+        self.rt =  self.St @ (xtd - cs.vertcat(-cs.sin(target_f[2,-1]),target_f[[1,3,4],-1]))
         # self.rt = target_f[:,-1]
         self.opti.subject_to(cs.sumsqr(self.rt) <= (1e-2)**2)
 
@@ -84,7 +82,7 @@ class Solver:
 
     def initialize(self,x0,xs_guess,xf_guess,h_guess,us_guess=0,uf_guess=0):
         self.opti.set_value(self.x0, x0)
-        self.opti.set_initial(self.h, h_guess)
+        self.opti.set_initial(self.T, (self.N - 1)*h_guess)
         self.opti.set_initial(self.alpha, 0.5*(x0[2]**2 + x0[3]**2) + x0[1])
         self.opti.set_initial(self.xs, xs_guess)
         self.opti.set_initial(self.xf, xf_guess)
@@ -101,7 +99,7 @@ class Solver:
                         "flight": sol.value(self.xf),
                         "stance_control": sol.value(self.us),
                         "flight_control": sol.value(self.uf),
-                        "step_size": sol.value(self.h),
+                        "step_size": sol.value(self.T)/(self.N-1),
                         "alpha": sol.value(self.alpha),
                         "cost":sol.value(self.Ju),
                         "wall-time":end-start,

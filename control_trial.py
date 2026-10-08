@@ -2,23 +2,29 @@ import casadi as cs
 import numpy as np
 import pickle 
 from matplotlib import pyplot as plt
+from matplotlib.colors import ListedColormap
 from MPC.solver_1step import Solver 
 
 np.set_printoptions(precision=3,suppress=True)
 
-EMIN,EMAX = 1.5,10.
-E0 = 3
+
+w_list = np.linspace(1,3,10)
+k_list = np.linspace(20,200,10)
+
+EMIN,EMAX = 2,10.
+E0 = 6
 
 with open("data/generator_separation.pkl", "rb") as file:
     generator_separation = pickle.load(file)
 
 points = []
+grid_bool = np.zeros((10,10))
+grid_sep  = np.zeros((10,10))
 
-fig = plt.figure()
-# ax = fig.add_subplot(1,1,1)
 
-for w_idx in range(5):
-    for k_idx in range(5):
+
+for w_idx in range(10):
+    for k_idx in range(10):
 
         with open("data/dataset_{}{}.pkl".format(k_idx,w_idx), "rb") as file:
             data = pickle.load(file)
@@ -26,6 +32,12 @@ for w_idx in range(5):
 
         FW = np.array(data["locomotion"][2])
         SW = np.array(data["switch"][2])
+
+        if FW[100,3] < 0 :
+            FW[:,[0,2,3,5]] = - FW[:,[0,2,3,5]]
+        if SW[100,3] < 0 :
+            SW[:,[0,2,3,5]] = - SW[:,[0,2,3,5]]
+
         E_min = max(EMIN, max(min(FW[:,-1]),min(SW[:,-1])))
         E_max =  min(EMAX, min(max(FW[:,-1]),max(SW[:,-1])))
         E_grid = np.linspace(E_min, E_max, 100)
@@ -64,17 +76,48 @@ for w_idx in range(5):
             cs.DM([u_star[7],u_star[6]+u_star[8]])
         )
         sol = solver.solve()
-        print("Stiffness: {} | frequency: {}".format(data["K"],data["W"]))
-        if sol["success"]:
-            print(np.asarray([sol["cost"],sol["wall-time"],sol["iterations"]]))
+        if sol["success"] and sol["cost"] < 10:
+            # print(np.asarray([sol["cost"],sol["wall-time"],sol["iterations"]]))
             for s in generator_separation:
                 E,K,W,x_min,f_min = s
                 if K==data["K"] and W ==data["W"] and E==E0:
                     points.append((f_min,sol["cost"]))
         else:
-            print("Error")
+            print("Error at {:2f},{:2f}".format(data["K"],data["W"]))
+            grid_bool[k_idx,w_idx] = 1
 
-        
+        for s in generator_separation:
+            E,K,W,x_min,f_min = s
+            if K==data["K"] and W ==data["W"] and E==E0:
+                grid_sep[k_idx,w_idx] = f_min
 
-plt.plot([p[0] for p in points], [p[1] for p in points], linewidth=0, marker='o')
+
+import matplotlib.ticker as ticker
+
+print(grid_sep)
+mask_cmap = ListedColormap([
+    (0, 0, 0, 0),      # False: transparent
+    (1, 0, 0, 0.45),   # True: transparent red
+])
+fig = plt.figure(figsize=(10,10))
+ax = fig.add_subplot(1,1,1)
+im = ax.imshow(grid_sep)
+fig.colorbar(im,ax=ax)
+# ax.imshow(
+#     grid_bool.astype(int),
+#     cmap=mask_cmap,
+#     vmin=0,
+#     vmax=1,
+# )
+ax.set_xticks(range(10),labels=[f"{k:.2f}" for k in k_list])
+ax.set_yticks(range(10),labels=[f"{w:.2f}" for w in w_list])
+plt.savefig('heatmap.svg')
+
+
+print(len(points))
+
+plt.figure()
+plt.plot([p[0] for p in points], [p[1] for p in points], linewidth=0, marker='o',color='#e09d2e')
+plt.ylim(-1,10)
+plt.grid()
 plt.show()

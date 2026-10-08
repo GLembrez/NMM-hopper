@@ -71,8 +71,8 @@ LUT_BW,Emin_BW,Emax_BW = getLUT(BW)
 LUT_FW_TO_BW,Emin_FW_TO_BW,Emax_FW_TO_BW = getLUT(FW_TO_BW)
 LUT_BW_TO_FW,Emin_BW_TO_FW,Emax_BW_TO_FW = getLUT(BW_TO_FW)
 
-N=100
-E_list = np.linspace(3,6,N)
+N=20
+E_list = np.linspace(2.3,4.5,N)
 J1,J2,Jb = [],[],[]
 T1,T2,Tb = [],[],[]
 PS1,PF1,PS2,PF2,PSb,PFb = [],[],[],[],[],[]
@@ -102,6 +102,7 @@ for E_star in E_list:
     T1.append(sol_rev_1s["wall-time"])
     PS1.append(max(np.abs(sol_rev_1s["stance_control"])))
     PF1.append(max(np.abs(sol_rev_1s["flight_control"])))
+    print(sol_rev_1s["flight"][0,0],sol_rev_1s["flight"][0,-1])
 
     x0 = S_rev_1s.flight_to_stance(sol_rev_1s["flight"][:,-1])
     u_fw_to_bw_fitted = LUT_FW_TO_BW(sol_rev_1s["alpha"])
@@ -131,6 +132,7 @@ T = []
 J = []
 PS = []
 PF = []
+E_listb = list(E_list.copy())
 for i in range(N):
     if np.abs(J1[i]+J2[i]) < 2:
         T.append(T1[i]+T2[i])
@@ -138,19 +140,46 @@ for i in range(N):
         PS.append(PS1[i]+ PS2[i])
         PF.append(PF1[i] + PF2[i])
 
-for t,j,ps,pf in zip(Tb,Jb,PSb,PFb):
+for t,j,ps,pf,E in zip(Tb,Jb,PSb,PFb,E_listb):
     if np.abs(j)>1:
         Tb.remove(t)
         Jb.remove(j)
         PSb.remove(ps)
         PFb.remove(pf)
+        E_listb.remove(E)
+
 
 print("median compute time: NMM-guided {:.3f} | baseline {:.3f}".format(np.median(T),np.median(Tb)))
 print("cost bounds: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(J),max(J),min(Jb),max(Jb)))
 print("peak force: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(np.abs(PS)),max(np.abs(PS)),min(np.abs(PSb)),max(np.abs(PSb))))
 print("peak torque: NMM-guided {:.3f}-{:.3f} | baseline {:.3f}-{:.3f}".format(min(np.abs(PF)),max(np.abs(PF)),min(np.abs(PFb)),max(np.abs(PFb))))
 
-plt.figure()
-plt.plot(Jb,'o',linewidth=0)
-plt.plot(J,'o',linewidth=0)
-plt.show()
+fontsize=18
+fig = plt.figure(figsize=(10,10))
+ax1 = fig.add_subplot(3,1,1)
+ax2 = fig.add_subplot(3,1,2)
+ax3 = fig.add_subplot(3,1,3)
+
+ax1.plot(E_listb,Jb,label=r"$J_{baseline}$",color="#5aadda",linestyle = 'dotted',lw=4)
+ax1.plot(E_list,J1,label=r"$J_{\mathcal{A}_1^{1,+} \rightarrow \mathcal{C}_1}$",lw=4,c="#1c9772")
+ax1.plot(E_list,J2,label=r"$J_{\mathcal{C}_1 \rightarrow \mathcal{A}_1^{1,-}}$",lw=4,c="#e09d2e")
+ax1.plot(E_list,[J1[i] + J2[i] for i in range(N)],label=r"$J$",lw=4,c='#5aadda')
+ax1.set_ylabel(r'Cost  $J$',fontsize=fontsize)
+ax1.legend(fontsize=fontsize)
+ax1.grid()
+
+ax2.plot(E_listb,PSb,c="#5aadda",linestyle="dotted",label="baseline",lw=4)
+ax2.plot(E_list, [max(PS1[i],PS2[i]) for i in range(N)],c="#5aadda",lw=4,label='NMM-guided')
+ax2.set_ylabel(r'peak $u^S$',fontsize=fontsize)
+ax2.legend(fontsize=fontsize)
+ax2.grid()
+
+ax3.plot(E_listb,PFb,c="#5aadda",linestyle="dotted",label="baseline",lw=4)
+ax3.plot(E_list, [max(PF1[i],PF2[i]) for i in range(N)],c="#5aadda",lw=4,label='NMM-guided')
+ax3.legend(fontsize=fontsize)
+ax3.set_xlabel(r'$E$',fontsize=fontsize)
+ax3.set_ylabel(r'peak $u^F$',fontsize=fontsize)
+ax3.grid()
+
+
+plt.savefig('sweep.svg')
