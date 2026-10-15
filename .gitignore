@@ -28,3 +28,8 @@ tempCodeRunnerFile.py
 
 # vector graphics
 /ouput/*.svg
+
+# jit files
+*.o 
+*.c
+*.so
