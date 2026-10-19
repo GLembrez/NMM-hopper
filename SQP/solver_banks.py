@@ -1,14 +1,14 @@
-import OCP_layout as Layout
+from OCP_layout import Layout
 import problem_definition 
 import casadi as cs
 
 class Solver:
-    def __init__(self,target,sequence,N,dim,bounds):
+    def __init__(self,target,dynamics,sequence,bounds):
         self.name = f"{target.name()}_{''.join(sequence)}"
         self.target = target
         self.sequence = sequence
-        self.layout = Layout(list(sequence),N,dim)
-        problem = problem_definition.make_problem(self.layout,target)
+        self.layout = Layout(list(sequence),dynamics.N,dynamics.dim)
+        problem = problem_definition.make_problem(self.layout,target,dynamics)
         self.linearize,self.values, self.qp_structure, self.con_min, self.con_max, self.ng = problem
         self.qp_solver = cs.conic(
             f"qp_{self.name}",

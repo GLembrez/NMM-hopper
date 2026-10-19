@@ -70,3 +70,28 @@ class Layout:
                 w.append(duration[i+1])
         return cs.vertcat(*w)
 
+    def unpack(self,w):
+        y,v = self.split(w)
+        x = [np.zeros((self.dim[m],self.N[m])) for m in self.modes]
+        u = [np.zeros(self.N[m]-1) for m in self.modes]
+        t = np.zeros(len(self.modes))
+
+        for k,(idx_m,m,idx_n) in enumerate(self.stages):
+            d = self.dim[m]
+            x[idx_m][:,idx_n] = np.asarray(y[k][:d]).squeeze()
+            if idx_n == 0:
+                t[idx_m] = float(y[k][d]) 
+            if self.edge[k] == "flow":
+                u[idx_m][idx_n] = float(v[k][0])
+        terminal_aux = np.asarray(y[-1][-self.dim_terminal_aux:]).squeeze()
+
+        return {
+            "modes": self.modes,
+            "x": x,
+            "u": u,
+            "t": t.tolist(),
+            "E": float(terminal_aux[0]),
+            "phi": float(terminal_aux[1]),
+            "s_plus": terminal_aux[2:2 + self.dim_terminal],
+            "s_minus": terminal_aux[2 + self.dim_terminal:],
+        }
